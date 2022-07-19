@@ -20,11 +20,11 @@ pathRelease = 'https://drive.google.com/drive/folders/1O18scg9iBTiBaDiQFhoGxdn4F
 pathRelease %>% drive_ls()
 
 # create temporary directory 
-dir.create('temp/')
+dir.create('temp/')                                                             ## ?Where is this temp directory located?
 
 # DOWNLOAD DATA =====
 
-## download signal documentation and show user
+## reads in temp SignalDoc.csv to signaldoc df and isolates to relevant date cols ====
 target_dribble = pathRelease %>% drive_ls() %>% 
   filter(name=='SignalDoc.csv')
 
@@ -40,21 +40,22 @@ signaldoc = fread('temp/deleteme.csv') %>%
   arrange(signalname) %>% 
   select(signalname, pubdate, sampend, sampstart)
 
-## download all long-short returns (OP) ====
+
+## download all long-short returns (OP) ==== 
 target_dribble = pathRelease %>% drive_ls() %>% 
   filter(name=='Portfolios') %>% drive_ls() %>% 
   filter(name=='Full Sets OP') %>% drive_ls() %>% 
-  filter(name=='PredictorLSretWide.csv')
-
+  filter(name=='PredictorLSretWide.csv')                                        ## ? did this data come from OpenAssetAllocation?
+                                                                                ## ? is this the data reported in the OP or your replication of the strategy?
 drive_download(target_dribble[1,], path = 'temp/deleteme.csv', overwrite = T)
 
-ret0 = fread('temp/deleteme.csv') %>% 
+ret0 = fread('temp/deleteme.csv') %>%                                           ## reshape returns data from wide to long and removes NaNs
   pivot_longer(-c(date),names_to = 'signalname', values_to = 'ret') %>% 
   filter(!is.na(ret)) 
 
 
 # MERGE AND FIND OUT OF SAMPLE RETURNS ====
-ret1 = ret0 %>% 
+ret1 = ret0 %>%                                                                 ## merging, on signalname, returns and date (sampend, sampstart, pubdate) data
   left_join(signaldoc) %>% 
   mutate(
     samptype = case_when(
@@ -66,7 +67,7 @@ ret1 = ret0 %>%
   ) %>% 
   filter(!is.na(samptype))
 
-sumsignal = ret1 %>%   
+sumsignal = ret1 %>%                                                            ## collapses on sampletype then signalname to find mean return and t-stat of each strategy in all three sample types
   group_by(signalname, samptype) %>% 
   summarize(
     rbar = mean(ret)
@@ -85,15 +86,16 @@ sumsamp = sumsignal %>%
   group_by(samptype) %>% 
   summarize(rbar = mean(rbar), nsignal = n())
 
+baseline = sumsamp %>% 
+  filter(samptype == 'in-samp') %>% 
+  select(rbar) %>% 
+  as.numeric()
 
-baseline = sumsamp %>% filter(samptype == 'in-samp') %>% select(rbar) %>% as.numeric()
-
-sumsamp = sumsamp %>% 
+sumsamp = sumsamp %>%                                                           ## finds % decay of returns in out-of-samp and post-pub using in-samp as baseline 
   mutate(
     decay = (baseline - rbar)/baseline
   )
 
-sumsamp
 
 
 # BOOTSTRAP MEAN DISTRIBUTIONS ====
