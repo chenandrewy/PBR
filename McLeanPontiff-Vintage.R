@@ -41,9 +41,6 @@ signaldoc = fread('temp/deleteme.csv') %>%
   select(signalname, pubdate, sampend, sampstart)
 
 
-
-
-
 ## Download all long-short returns (OP) ====
 
 # use this for original papers
@@ -64,7 +61,7 @@ if (!file.exists('../temp/deleteme.csv')){
 
 ret0 = fread('temp/deleteme.csv') %>%                                           ## reshape returns data from wide to long and removes NaNs
   # pivot_longer(-c(date),names_to = 'signalname', values_to = 'ret') %>%
-  filter(!is.na(ret))
+  filter(!is.na(ret), port == 'LS')
 
 
 # MERGE AND FIND OUT OF SAMPLE RETURNS ====
@@ -80,35 +77,6 @@ ret1 = ret0 %>%                                                                 
   ) %>% 
   filter(!is.na(samptype))
 
-sumsignal = ret1 %>%                                                            ## collapses on sampletype then signalname to find mean return and t-stat of each strategy in all three sample types
-  group_by(signalname, samptype) %>% 
-  summarize(
-    rbar = mean(ret)
-    , tstat = rbar/sd(ret)*sqrt(n())
-  ) 
-
-# remove bad reproductions / bad predictors (if desired)
-signalok = sumsignal %>% 
-  filter(samptype=='in-samp') %>% 
-  filter(tstat > -Inf) %>% 
-  transmute(signalname)
-sumsignal = sumsignal %>% inner_join(signalok)
-
-# check out of sample decay simple way ====
-sumsamp = sumsignal %>% 
-  group_by(samptype) %>% 
-  summarize(rbar = mean(rbar), nsignal = n())
-
-baseline = sumsamp %>% 
-  filter(samptype == 'in-samp') %>% 
-  select(rbar) %>% 
-  as.numeric()
-
-sumsamp = sumsamp %>%                                                           ## finds % decay of returns in out-of-samp and post-pub using in-samp as baseline 
-  mutate(
-    decay = (baseline - rbar)/baseline
-  )
-
 
 # BOOTSTRAP MEAN DISTRIBUTIONS ====
 # clustered by month
@@ -119,10 +87,7 @@ nboot = 500
 
 # make wide dataset, use NA if not correct sample
 
-bootfun = function(sampname, portnum){
-  
-  # remove unnecessary portfolios
-  ret1 <- ret1[ret1$port == portnum, ]
+bootfun = function(sampname){
   
   # make wide dataset, use NA if not correct sample
   wide_is = ret1 %>%
@@ -151,13 +116,13 @@ bootfun = function(sampname, portnum){
 
 
 # bootstrap for each sample type
-rboot1 = bootfun('in-samp', "01")
-rboot2 = bootfun('out-of-samp', "01")
+rboot1 = bootfun('in-samp')
+rboot2 = bootfun('out-of-samp')
 
 # compile and plot
 bootdat = data.frame(
   pooled_mean_ret = rboot1, samptype = 'in-samp' 
-) %>% 
+  ) %>% 
   rbind(
     data.frame(
       pooled_mean_ret = rboot2, samptype = 'out-of-samp' 
@@ -165,13 +130,13 @@ bootdat = data.frame(
   )
 
 
-bootdat  %>% 
-  ggplot(aes(x=pooled_mean_ret, fill=samptype)) +
-  geom_histogram(
-    alpha = 0.6, position = 'identity', breaks = seq(0,1,0.025), aes(y=..density..)
-  ) +
-  ggtitle('bootstrapped distribution') +
-  labs(x='pooled mean return (% monthly)') +
-  geom_vline(xintercept = 0)
+# bootdat  %>% 
+#   ggplot(aes(x=pooled_mean_ret, fill=samptype)) +
+#   geom_histogram(
+#     alpha = 0.6, position = 'identity', breaks = seq(0,1,0.025), aes(y=..density..)
+#   ) +
+#   ggtitle('bootstrapped distribution') +
+#   labs(x='pooled mean return (% monthly)') +
+#   geom_vline(xintercept = 0)
 
 
