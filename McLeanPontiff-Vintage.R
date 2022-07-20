@@ -60,7 +60,7 @@ if (!file.exists('../temp/deleteme.csv')){
     filter(name == FILENAME) %>% 
     drive_download(target_dribble[1,], path = 'temp/deleteme.csv', overwrite = T)
 
-
+}
 
 ret0 = fread('temp/deleteme.csv') %>%                                           ## reshape returns data from wide to long and removes NaNs
   # pivot_longer(-c(date),names_to = 'signalname', values_to = 'ret') %>%

@@ -81,10 +81,10 @@ cz_all = fread(paste0("../data/new-",FILENAME)) %>%
 ff_all = fread('../data/F-F_Research_Data_Factors.CSV')  %>% 
   mutate(vint = 2022) %>% 
   rbind(
-    fread('FF-Vintage/F-F_Research_Data_Factors_2005.txt') %>% mutate(vint = 2005)
+    fread('data/FF-Vintage/F-F_Research_Data_Factors_2005.txt') %>% mutate(vint = 2005)
   ) %>% 
   rbind(
-    fread('FF-Vintage/F-F_Research_Data_Factors_2012.txt') %>% mutate(vint = 2012)    
+    fread('data/FF-Vintage/F-F_Research_Data_Factors_2012.txt') %>% mutate(vint = 2012)    
   )  
   
 colnames(ff_all) = c('yearm', 'mktrf', 'smb', 'hml', 'rf', 'vint')
