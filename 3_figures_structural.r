@@ -111,7 +111,7 @@ ret1 = ret0 %>%                                                                 
   ) %>% 
   filter(!is.na(samptype), !is.na(ret))
 
-# find mean returns by sample
+# find mean returns by sample, merge and find muhat
 retsum = ret1 %>% 
   group_by(signalname, samptype) %>%  
   summarize(
@@ -128,6 +128,8 @@ retsum = ret1 %>%
 
 
 # plot sketch
-ggplot(retsum, aes(x=muhat,y=between)) +
-  geom_point() +
-  geom_abline(slope = 1)
+plotme = retsum %>% select(signalname, insamp, between, muhat) %>% 
+  pivot_longer(cols = c(between,muhat), names_to = 'group', values_to = 'y')
+
+ggplot(plotme, aes(x=insamp, y=y, group = group)) +
+  geom_point(aes(color = group))
