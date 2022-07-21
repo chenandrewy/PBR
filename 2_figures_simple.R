@@ -162,9 +162,7 @@ fit_all = target_data[
     model = 'raw'
   )
 
-
 ## Name Scatter cleaner ====
-
 
 # select comparable t-stats
 fit_OP = doc %>% 
