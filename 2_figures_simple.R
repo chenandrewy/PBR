@@ -1,4 +1,4 @@
-# 2022 07 Alec Erb on Behalf of Andrew Chen: Generate Simple Figures for PBR
+# 2022 07 Alec Erb on behalf of Andrew Chen: Generate Simple Figures for PBR
 
 # SETUP ====
 
@@ -21,7 +21,7 @@ ret0 = fread('data/PredictorPortsFull.csv') %>%
   filter(!is.na(ret), port == 'LS')
 
 # read in SignalDoc.csv and isolates to relevant date cols
-signaldoc = fread('temp/deleteme.csv') %>% 
+signaldoc = fread('data/SignalDoc.csv') %>% 
   mutate(
     signalname = Acronym
     , pubdate = as.Date(paste0(Year, '-12-31'))
