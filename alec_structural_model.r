@@ -10,7 +10,7 @@ library(mosaic)
 library(pracma) # access to ERF function
 
 # run this if you get an error on import_cz below
-# import_cz(dl = T) 
+import_cz(dl = F)
 
 # SETTINGS ====
 
@@ -42,16 +42,21 @@ n_miniboot = 100
 
 tic = Sys.time()
 
-cz_filt_tabs = import_cz(dl=F) %>% filter(tabs >= 1.96)
+cz_filt_tabs = import_cz(dl=F) %>% filter(tabs >= 1.96) %>% pull(tabs)
 
 
 ## Solver ====
-t_sample_mean = mean(cz_filt_tabs$tabs)
+t_sample_mean = mean(cz_filt_tabs)
 
 trunc_normal = makeFun( ((dnorm(2/x, mean=0, sd=1)) / (1 - pnorm(2/x, mean = 0, sd = 1))) * x ~ x )
+plot(trunc_normal)
 lambda = findZeros( trunc_normal(x) - t_sample_mean~x, xlim = range(2, 10000)) %>% pull()
+# Lambda is dispersion of t-stat
 shrink = (1/(lambda**2))
 
+detach("package:mosaic")
+detach("package:mosaicCalc")
+detach("package:pracma")
 
 est.point = estimate(
   est.set = set.check
@@ -146,3 +151,4 @@ plotme = retsum %>% select(signalname, insamp, between, muhat) %>%
 
 ggplot(plotme, aes(x=insamp, y=y, group = group)) +
   geom_point(aes(color = group))
+
