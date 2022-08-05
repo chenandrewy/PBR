@@ -61,7 +61,7 @@ bootfun = function(sampname){
   wide_is = ret1 %>%
     filter(samptype == sampname) %>% 
     pivot_wider(
-      c(date, ret, signalname), names_from = signalname, values_from = ret
+      c(date, "ret", signalname), names_from = "signalname", values_from = "ret"
     ) %>% 
     select(-date) %>% 
     as.matrix()

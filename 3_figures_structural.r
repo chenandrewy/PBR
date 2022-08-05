@@ -123,7 +123,7 @@ retsum = ret1 %>%
     , by = 'signalname'
   ) %>% 
   mutate(
-    muhat = insamp * (1-bias)
+    muhat = insamp * (1-.bias)
   )
 
 
