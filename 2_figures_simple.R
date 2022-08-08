@@ -429,7 +429,7 @@ plotme = data.table(
 
 ggplot(plotme, aes(x=Num_PC, y = pct_explained)) + geom_line() +
   coord_cartesian(
-    xlim = c(0,50)
+    xlim = c(0,80)
   )
 
 
