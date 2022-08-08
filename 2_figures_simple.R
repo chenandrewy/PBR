@@ -236,6 +236,13 @@ ggsave(
 
 # Generate t too big figure ====
 
+## settings ====
+
+nboot = 200
+ndatemax = dim(emat)[1]
+ndatemin = 240
+tedge = c(seq(0,6,1), 20)
+
 ## Import ====
 
 # All signals
@@ -273,6 +280,55 @@ fit_all = target_data[
     model = 'raw'
   )
 
+## Bootstrap ====
+
+# residuals
+e = cz_all %>% 
+  filter(insamp, port == 'LS') %>% 
+  group_by(signalname) %>% 
+  mutate(
+    e = as.vector(scale(ret, center = T, scale = F))
+  ) %>% 
+  select(signalname, date, e) %>% 
+  pivot_wider(names_from = signalname, values_from = e) %>% 
+  select(-date) %>% 
+  as.matrix()
+
+# bootstrap
+set.seed(1057)
+boot = data.table()
+for (i in 1:nboot){
+  dateselect = sample(1:dim(emat)[1], ndatemax, replace = T)
+  
+  # draw
+  eboot = e[dateselect, ]
+  
+  # summarize each predictor
+  ebar = apply(eboot, 2, mean, na.rm=T)
+  vol  = apply(eboot, 2, sd, na.rm=T)
+  ndate  = apply(eboot, 2, function(x) sum(!is.na(x)))
+  tstat = ebar/vol*sqrt(ndate)
+  
+  # remove if not enough observations
+  tstat2 = tstat[ndate > ndatemin]
+  
+  # summarize across predictors
+  hdat = hist(abs(tstat2), tedge, plot = F)
+  
+  # store
+  temp = data.table(booti = i, t_left = tedge[1:(length(tedge)-1)], p = hdat$counts/length(tstat2))
+  boot = rbind(boot, temp)
+}
+
+# summarize across bootstraps
+bootsum = boot %>% 
+  group_by(t_left) %>% 
+  summarize(
+    p = mean(p)
+  )
+
+
+
 
 ## Make Table ====
 library(xtable)
@@ -283,8 +339,6 @@ pemp = ecdf(fit_all$tstat)
 # add bootstrap cdf??
 
 # table settings
-# tedge = c(seq(2,10,1), 20)
-tedge = c(seq(1,6,1), 20)
 t_left  = tedge[1:(length(tedge)-1)]
 t_right = tedge[2:length(tedge)]
 
@@ -296,6 +350,10 @@ tab_too_big = data.frame(
   , prob_emp = pemp(t_right) - pemp(t_left)
   , prob_null = 2*(pnorm(t_right) - pnorm(t_left))
 ) %>% 
+  left_join(
+    bootsum %>% rename(prob_boot = p)
+    , by = 't_left'
+  ) %>% 
   mutate(
     emp_to_null = prob_emp / prob_null
     , N_hack = N_emp/prob_null
