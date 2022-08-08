@@ -376,3 +376,60 @@ tab_too_big_wide = tab_too_big %>% t()
 tab_too_big_wide
 
 print(xtable(tab_too_big_wide, type = "latex"), file = "../results/tab-too-big.tex")
+
+
+
+# Correlation Figures ------------------------------------------------------
+
+# import data
+doc =  fread("../data/SignalDoc.csv") %>%
+  rename(signalname = Acronym) %>%
+  select(-c(`Detailed Definition`, `Notes`))
+
+
+cz_all = fread(paste0("../data/PredictorPortsFull.csv"))  %>% 
+  select(signalname, port, date, ret) %>%
+  left_join(
+    doc %>% select(signalname, SampleStartYear, SampleEndYear)
+    , by = 'signalname'
+  ) %>%
+  mutate(
+    insamp = (year(date) >= SampleStartYear) &  (year(date) <= SampleEndYear)
+  )
+
+# use full sample for most overlap
+retmat = cz_all %>% 
+  filter(port == 'LS') %>% 
+  select(signalname, date, ret) %>% 
+  pivot_wider(names_from = signalname, values_from = ret) %>% 
+  select(-date) %>% 
+  as.matrix()
+
+## correlation dist ====
+cormat = cor(retmat, use = 'pairwise.complete.obs')
+
+
+corlong = cormat[lower.tri(cormat)]
+
+
+ggplot(data.frame(cor = corlong), aes(x=cor)) + geom_histogram()
+
+
+## PCA ====
+# some eigenvalues are negative, since we use available case correlations
+# this is not a real correlation matrix
+# let's just ignore this, it's not worth doing a "nearest PSD"
+
+eigval = eigen(cormat)$values
+pct_explained = cumsum(eigval/sum(eigval))*100
+
+plotme = data.table(
+  Num_PC = 1:length(pct_explained), pct_explained
+)
+
+ggplot(plotme, aes(x=Num_PC, y = pct_explained)) + geom_line() +
+  coord_cartesian(
+    xlim = c(0,50)
+  )
+
+
