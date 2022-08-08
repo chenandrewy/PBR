@@ -230,3 +230,81 @@ ggsave(
   height = 12
 )
 
+
+
+
+
+# Generate t too big figure ====
+
+## Import ====
+
+# All signals
+doc =  fread("../data/SignalDoc.csv") %>%
+  rename(signalname = Acronym) %>%
+  select(-c(`Detailed Definition`, `Notes`))
+
+
+# Chen-Zimmerman dataset
+cz_all = fread(paste0("../data/PredictorPortsFull.csv"))  %>% 
+  select(signalname, port, date, ret) %>%
+  left_join(
+    doc %>% select(signalname, SampleStartYear, SampleEndYear)
+    , by = 'signalname'
+  ) %>%
+  mutate(
+    insamp = (year(date) >= SampleStartYear) &  (year(date) <= SampleEndYear)
+  )
+
+# Performance Measures 
+target_data = cz_all %>% 
+  filter(insamp & port == 'LS') %>% 
+  mutate(yearm = year(date)*100 + month(date)) %>% 
+  select(signalname, yearm, ret)
+
+# no adjustment
+fit_all = target_data[
+  , list(
+    alpha = summary(lm(ret~1))$coefficients['(Intercept)' , 'Estimate']
+    , tstat = summary(lm(ret~1))$coefficients['(Intercept)' , 't value']
+  )
+  , by=signalname
+] %>% 
+  mutate(
+    model = 'raw'
+  )
+
+
+## Make Table ====
+library(xtable)
+
+# empirical cdf
+pemp = ecdf(fit_all$tstat)
+
+# add bootstrap cdf??
+
+# table settings
+# tedge = c(seq(2,10,1), 20)
+tedge = c(seq(1,6,1), 20)
+t_left  = tedge[1:(length(tedge)-1)]
+t_right = tedge[2:length(tedge)]
+
+# table
+tab_too_big = data.frame(
+  t_left 
+  , t_right
+  , N_emp = length(fit_all$tstat)*(pemp(t_right) - pemp(t_left))
+  , prob_emp = pemp(t_right) - pemp(t_left)
+  , prob_null = 2*(pnorm(t_right) - pnorm(t_left))
+) %>% 
+  mutate(
+    emp_to_null = prob_emp / prob_null
+    , N_hack = N_emp/prob_null
+  )
+
+
+
+tab_too_big_wide = tab_too_big %>% t()
+
+tab_too_big_wide
+
+print(xtable(tab_too_big_wide, type = "latex"), file = "../results/tab-too-big.tex")
