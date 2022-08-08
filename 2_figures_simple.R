@@ -238,7 +238,11 @@ ggsave(
 
 ## settings ====
 
-nboot = 200
+# for nboot = 1000, takes 20 seconds.  
+# nboot = 10,000 takes 3 minutes.  This is about 20 million predictors
+library(xtable) 
+
+nboot = 10*1000
 ndatemax = dim(emat)[1]
 ndatemin = 240
 tedge = c(seq(0,6,1), 20)
@@ -295,12 +299,13 @@ e = cz_all %>%
   as.matrix()
 
 # bootstrap
-set.seed(1057)
+# fast binding based on https://stackoverflow.com/questions/19697700/how-to-speed-up-rbind
 boot = data.table()
-for (i in 1:nboot){
+
+boot_once = function(){
   dateselect = sample(1:dim(emat)[1], ndatemax, replace = T)
   
-  # draw
+  # draw returns, clustered by month
   eboot = e[dateselect, ]
   
   # summarize each predictor
@@ -314,24 +319,29 @@ for (i in 1:nboot){
   
   # summarize across predictors
   hdat = hist(abs(tstat2), tedge, plot = F)
-  
-  # store
-  temp = data.table(booti = i, t_left = tedge[1:(length(tedge)-1)], p = hdat$counts/length(tstat2))
-  boot = rbind(boot, temp)
+  temp = data.table(t_left = tedge[1:(length(tedge)-1)], p = hdat$counts/length(tstat2))
+  return(temp)
 }
 
+
+# bootstrap!!
+
+tic = Sys.time()
+set.seed(1057)
+bootdat = rbindlist(lapply(1:nboot, function(x) boot_once()))
+toc = Sys.time()
+toc - tic
+
+
 # summarize across bootstraps
-bootsum = boot %>% 
+bootsum = bootdat %>% 
   group_by(t_left) %>% 
   summarize(
     p = mean(p)
   )
 
 
-
-
 ## Make Table ====
-library(xtable)
 
 # empirical cdf
 pemp = ecdf(fit_all$tstat)
@@ -348,15 +358,15 @@ tab_too_big = data.frame(
   , t_right
   , N_emp = length(fit_all$tstat)*(pemp(t_right) - pemp(t_left))
   , prob_emp = pemp(t_right) - pemp(t_left)
-  , prob_null = 2*(pnorm(t_right) - pnorm(t_left))
+  , prob_norm = 2*(pnorm(t_right) - pnorm(t_left))
 ) %>% 
   left_join(
     bootsum %>% rename(prob_boot = p)
     , by = 't_left'
   ) %>% 
   mutate(
-    emp_to_null = prob_emp / prob_null
-    , N_hack = N_emp/prob_null
+    emp_to_norm = prob_emp / prob_norm
+    , N_hack_norm = N_emp/prob_norm
   )
 
 
