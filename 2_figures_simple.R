@@ -230,3 +230,149 @@ ggsave(
   height = 12
 )
 
+
+
+
+
+# Generate t too big figure ====
+
+## settings ====
+
+# for nboot = 1000, takes 20 seconds.  
+# nboot = 10,000 takes 3 minutes.  This is about 20 million predictors
+library(xtable) 
+
+nboot = 10*1000
+ndatemax = dim(emat)[1]
+ndatemin = 240
+tedge = c(seq(0,6,1), 20)
+
+## Import ====
+
+# All signals
+doc =  fread("../data/SignalDoc.csv") %>%
+  rename(signalname = Acronym) %>%
+  select(-c(`Detailed Definition`, `Notes`))
+
+
+# Chen-Zimmerman dataset
+cz_all = fread(paste0("../data/PredictorPortsFull.csv"))  %>% 
+  select(signalname, port, date, ret) %>%
+  left_join(
+    doc %>% select(signalname, SampleStartYear, SampleEndYear)
+    , by = 'signalname'
+  ) %>%
+  mutate(
+    insamp = (year(date) >= SampleStartYear) &  (year(date) <= SampleEndYear)
+  )
+
+# Performance Measures 
+target_data = cz_all %>% 
+  filter(insamp & port == 'LS') %>% 
+  mutate(yearm = year(date)*100 + month(date)) %>% 
+  select(signalname, yearm, ret)
+
+# no adjustment
+fit_all = target_data[
+  , list(
+    alpha = summary(lm(ret~1))$coefficients['(Intercept)' , 'Estimate']
+    , tstat = summary(lm(ret~1))$coefficients['(Intercept)' , 't value']
+  )
+  , by=signalname
+] %>% 
+  mutate(
+    model = 'raw'
+  )
+
+## Bootstrap ====
+
+# residuals
+e = cz_all %>% 
+  filter(insamp, port == 'LS') %>% 
+  group_by(signalname) %>% 
+  mutate(
+    e = as.vector(scale(ret, center = T, scale = F))
+  ) %>% 
+  select(signalname, date, e) %>% 
+  pivot_wider(names_from = signalname, values_from = e) %>% 
+  select(-date) %>% 
+  as.matrix()
+
+# bootstrap
+# fast binding based on https://stackoverflow.com/questions/19697700/how-to-speed-up-rbind
+boot = data.table()
+
+boot_once = function(){
+  dateselect = sample(1:dim(emat)[1], ndatemax, replace = T)
+  
+  # draw returns, clustered by month
+  eboot = e[dateselect, ]
+  
+  # summarize each predictor
+  ebar = apply(eboot, 2, mean, na.rm=T)
+  vol  = apply(eboot, 2, sd, na.rm=T)
+  ndate  = apply(eboot, 2, function(x) sum(!is.na(x)))
+  tstat = ebar/vol*sqrt(ndate)
+  
+  # remove if not enough observations
+  tstat2 = tstat[ndate > ndatemin]
+  
+  # summarize across predictors
+  hdat = hist(abs(tstat2), tedge, plot = F)
+  temp = data.table(t_left = tedge[1:(length(tedge)-1)], p = hdat$counts/length(tstat2))
+  return(temp)
+}
+
+
+# bootstrap!!
+
+tic = Sys.time()
+set.seed(1057)
+bootdat = rbindlist(lapply(1:nboot, function(x) boot_once()))
+toc = Sys.time()
+toc - tic
+
+
+# summarize across bootstraps
+bootsum = bootdat %>% 
+  group_by(t_left) %>% 
+  summarize(
+    p = mean(p)
+  )
+
+
+## Make Table ====
+
+# empirical cdf
+pemp = ecdf(fit_all$tstat)
+
+# add bootstrap cdf??
+
+# table settings
+t_left  = tedge[1:(length(tedge)-1)]
+t_right = tedge[2:length(tedge)]
+
+# table
+tab_too_big = data.frame(
+  t_left 
+  , t_right
+  , N_emp = length(fit_all$tstat)*(pemp(t_right) - pemp(t_left))
+  , prob_emp = pemp(t_right) - pemp(t_left)
+  , prob_norm = 2*(pnorm(t_right) - pnorm(t_left))
+) %>% 
+  left_join(
+    bootsum %>% rename(prob_boot = p)
+    , by = 't_left'
+  ) %>% 
+  mutate(
+    emp_to_norm = prob_emp / prob_norm
+    , N_hack_norm = N_emp/prob_norm
+  )
+
+
+
+tab_too_big_wide = tab_too_big %>% t()
+
+tab_too_big_wide
+
+print(xtable(tab_too_big_wide, type = "latex"), file = "../results/tab-too-big.tex")

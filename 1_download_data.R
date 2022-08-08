@@ -9,7 +9,7 @@ library(data.table)
 library(googledrive)
 library(lubridate)
 
-dir.create('./data/')
+dir.create('../data/')
 
 SUBDIR = 'Full Sets OP'; FILENAME = 'PredictorPortsFull.csv'
 
@@ -25,12 +25,12 @@ if (!file.exists('../data/new-PredictorPortsFull.csv')){
     filter(name == "Portfolios") %>% drive_ls() %>% 
     filter(name == SUBDIR) %>% drive_ls() %>% 
     filter(name == FILENAME) %>% 
-    drive_download(path = paste0("./data/",FILENAME), overwrite = TRUE)
+    drive_download(path = paste0("../data/",FILENAME), overwrite = TRUE)
   
   # signal doc 
   url %>% drive_ls() %>% 
     filter(name == "SignalDoc.csv") %>% 
-    drive_download(path = "./data/SignalDoc.csv", overwrite = TRUE)
+    drive_download(path = "../data/SignalDoc.csv", overwrite = TRUE)
 }
 
 
