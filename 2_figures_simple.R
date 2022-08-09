@@ -13,7 +13,7 @@ library(nlme)
 
 SUBDIR = 'Full Sets OP'; FILENAME = 'PredictorPortsFull.csv'
 
-dir.create('./results/')
+dir.create('../results/')
 
 # Generate McLean-Pontiff bootstrapped mean returns figure ====
 # read in PredictorPortsFull.csv
@@ -110,39 +110,37 @@ bootdat  %>%
 
 
 ggsave(
-  "results/MPrep.pdf",
+  "../results/MPrep.png",
   width = 12,
   height = 12
 )
 
 
 
-# Generate R2 replication figure ====
+# Generate R2 Replication Figure ----
 
 ## Import ====
 
-# All signals
-doc =  fread("../data/SignalDoc.csv") %>%
-  rename(signalname = Acronym) %>%
+# cz
+doc =  fread("../data/SignalDoc.csv") %>% 
+  rename(signalname = Acronym) %>% 
   select(-c(`Detailed Definition`, `Notes`))
 
 
-# Chen-Zimmerman dataset
-cz_all = fread(paste0("../data/",FILENAME)) %>%
-  mutate(vint = 2022) %>%
+cz_all = fread(paste0("../data/",FILENAME)) %>% 
+  mutate(vint = 2022) %>% 
   rbind(
-    fread(paste0("../data/",FILENAME)) %>%
+    fread(paste0("../data/",FILENAME)) %>% 
       mutate(vint = 2021)
-  ) %>%
-  select(vint, signalname, port, date, ret) %>%
+  ) %>% 
+  select(vint, signalname, port, date, ret) %>% 
   left_join(
     doc %>% select(signalname, SampleStartYear, SampleEndYear)
     , by = 'signalname'
-  ) %>%
+  ) %>% 
   mutate(
     insamp = (year(date) >= SampleStartYear) &  (year(date) <= SampleEndYear)
-  )
-
+  ) 
 
 ## Performance Measures ====
 
@@ -152,7 +150,7 @@ target_data = cz_all %>%
   select(signalname, yearm, ret)
 
 # no adjustment
-fit_all = target_data[
+fit_raw = target_data[
   , list(
     alpha = summary(lm(ret~1))$coefficients['(Intercept)' , 'Estimate']
     , tstat = summary(lm(ret~1))$coefficients['(Intercept)' , 't value']
@@ -164,6 +162,12 @@ fit_all = target_data[
   )
 
 ## Name Scatter cleaner ====
+
+ablines = tibble(slope = 1, 
+                 intercept = 0,
+                 group = factor(x = c('45 degree line'),
+                                levels = c('45 degree line')))
+
 
 # select comparable t-stats
 fit_OP = doc %>% 
@@ -180,7 +184,7 @@ fit_OP = doc %>%
   ) 
 
 # merge 
-fitcomp = fit_all %>% 
+fitcomp = fit_raw %>% 
   filter(model == 'raw') %>% 
   rename(tstat_CZ = tstat) %>% 
   inner_join(
@@ -190,47 +194,84 @@ fitcomp = fit_all %>%
   filter(!is.na(tstat_OP)) %>%  # some port sorts have only point estimates 
   filter(tstat_CZ>0)  # for activism you can get a negative ff alpha
 
-# plot
-ablines = tibble(slope = 1, 
-                 intercept = 0,
-                 group = factor(x = c('45 degree line'),
-                                levels = c('45 degree line')))
+## Prepare signal doc ====
 
+catname = c('raw','factor or char adjusted','nonstandard lag')
+
+# select comparable t-stats
+fit_OP = doc %>% 
+  mutate(
+    tstat_OP = abs(as.numeric(`T-Stat`))
+  ) %>% 
+  select(
+    signalname, tstat_OP, `Predictability in OP`
+    , `Signal Rep Quality`, `Test in OP`, `Evidence Summary`
+    , SampleEndYear
+  ) %>% 
+  filter(
+    `Signal Rep Quality` %in% c('1_good','2_fair')
+    , grepl('port', `Test in OP`)
+    , `Predictability in OP` != 'indirect'
+  ) %>% 
+  filter(!is.na(tstat_OP)) %>%   # some port sorts have only point estimates 
+  mutate(
+    adjusted = if_else(
+      `Test in OP` %in% c('port sort', 'LS port') # these are raw long-shorts
+      , catname[1]
+      , catname[2]
+    ) 
+    , adjusted = if_else(
+      grepl('nonstandard', `Evidence Summary`)
+      , catname[3], adjusted
+    )
+    , adjusted = factor(
+      adjusted
+      , levels = catname
+    )
+  )
+
+## Raw vs OP plot ====
+
+# merge 
+fitcomp = fit_raw %>% 
+  filter(model == 'raw') %>% 
+  rename(tstat_CZ = tstat) %>% 
+  inner_join(
+    fit_OP
+    , by = 'signalname'
+  ) 
+
+# plot
+tempname = 'Original Method'
 fitcomp %>% 
-  ggplot(aes(y=tstat_CZ, x = tstat_OP)) +
-  geom_line(aes(y=tstat_CZ, x= tstat_OP), colour=NA) +
-  geom_smooth(method = lm, se = FALSE, color = "#666666", size=.6) +
-  geom_point(size=3) +
-  coord_trans(x='log10', y='log10', xlim = c(1.5, 17), ylim = c(1.0, 15)) +
-  ggrepel::geom_text_repel(aes(label=signalname), max.overlaps = Inf, box.padding = 0.5) +
-  scale_x_continuous(breaks=c(2, 5, 10, 15)) +
-  scale_y_continuous(breaks=c(2, 5, 10, 15)) +
+  ggplot(aes(x=tstat_OP, y = tstat_CZ)) +
+  geom_point(size=4, aes(shape =adjusted, fill = adjusted)) +
   theme_minimal(
-    base_size = 20
+    base_size = 15
   ) +
   theme(
-    legend.position = c(.9, .1), 
-    legend.title = element_blank(),
-    
-    axis.title.x = element_text(family = "sans", size = 12, face="bold"),
-    axis.title.y = element_text(family = "sans", size = 12, face="bold"),
-    axis.text.x = element_text(family = "sans", size = 12),
-    axis.text.y = element_text(family = "sans", size = 12),
-    plot.caption = element_text(family = "sans", hjust = 0),
+    legend.position = c(.8, .25)
   ) +
   geom_abline(
-    data = ablines, aes(slope = slope, intercept = intercept, linetype = group)
-    , color = 'black', size = 1
+    aes(slope = 1, intercept = 0)
   ) +
-  labs(y = 't-stat reproduction', 
-       x = 't-stat original paper')  
+  scale_shape_manual(
+    values = c(21, 22, 23), name = tempname
+  ) +
+  scale_fill_manual(
+    values = c('blue', 'white', 'gray'), name = tempname
+  ) +
+  labs(x = 't-stat Original Paper (see legend)'
+       , y = 't-stat Replicated (raw)')  +
+  coord_trans(x='log10', y='log10', xlim = c(1.5, 17), ylim = c(1.0, 15)) +
+  scale_x_continuous(breaks=c(2, 5, 10, 15)) +
+  scale_y_continuous(breaks=c(2, 5, 10, 15))
 
 ggsave(
-  "results/fitcomp.pdf",
+  "../results/raw_op.pdf",
   width = 12,
   height = 12
 )
-
 
 
 
@@ -414,6 +455,12 @@ corlong = cormat[lower.tri(cormat)]
 
 ggplot(data.frame(cor = corlong), aes(x=cor)) + geom_histogram()
 
+ggsave(
+  "../results/correlation.pdf",
+  width = 12,
+  height = 12
+)
+
 
 ## PCA ====
 # some eigenvalues are negative, since we use available case correlations
@@ -431,6 +478,15 @@ ggplot(plotme, aes(x=Num_PC, y = pct_explained)) + geom_line() +
   coord_cartesian(
     xlim = c(0,80)
   )
+
+
+ggsave(
+  "../results/PCA.pdf",
+  width = 12,
+  height = 12
+)
+
+
 
 
 
@@ -470,7 +526,7 @@ n_miniboot = 100
 
 tic = Sys.time()
 
-cz_filt_tabs = import_cz(dl=F) %>% filter(tabs >= 1.96) %>% pull(tabs)
+cz_filt_tabs = import_cz(dl=T) %>% filter(tabs >= 1.96) %>% pull(tabs)
 t_sample_mean = mean(cz_filt_tabs)
 
 # Build and solve truncated normal dist. for Lambda (x) [see Wikipedia - Truncated Nomrla]
@@ -554,5 +610,11 @@ plotme = retsum %>% select(signalname, insamp, between, muhat) %>%
 
 ggplot(plotme, aes(x=insamp, y=y, group = group)) +
   geom_point(aes(color = group))
+
+ggsave(
+  "../results/structural_figure.pdf",
+  width = 12,
+  height = 12
+)
 
 
