@@ -40,7 +40,7 @@ ret1 = ret0 %>%                                                                 
   mutate(
     samptype = case_when(
       (date >= sampstart) & (date <= sampend) ~ 'in-samp'
-      , (date > sampend) & (date <= pubdate) ~ 'out-of-samp'
+      , (date > sampend) & (date <= sampend %m+% months(36)) ~ 'out-of-samp'
       , (date > pubdate) ~ 'post-pub'
       , TRUE ~ NA_character_
     )
@@ -90,6 +90,13 @@ bootfun = function(sampname){
 rboot1 = bootfun('in-samp')
 rboot2 = bootfun('out-of-samp')
 
+mean_insamp = ret1 %>% filter(samptype == 'in-samp') %>% 
+  summarize(meanret = mean(ret)) %>% pull(meanret)
+
+mean_oos = ret1 %>% filter(samptype == 'out-of-samp') %>% 
+  summarize(meanret = mean(ret)) %>% pull(meanret)
+
+
 # compile and plot
 bootdat = data.frame(
   pooled_mean_ret = rboot1, samptype = 'in-samp' 
@@ -98,17 +105,14 @@ bootdat = data.frame(
     data.frame(
       pooled_mean_ret = rboot2, samptype = 'out-of-samp' 
     )
+  ) %>% 
+  mutate(
+    mean_ret_scaled = pooled_mean_ret/mean_insamp
   )
 
 
-bootdat  %>%
-  ggplot(aes(x=pooled_mean_ret, fill=samptype)) +
-  geom_histogram(
-    alpha = 0.6, position = 'identity', breaks = seq(0,1,0.025), aes(y=..density..)
-  ) +
-  ggtitle('Bootstrapped Distribution') +
-  labs(x='Pooled Mean Return (% monthly)') +
-  geom_vline(xintercept = 0)
+
+## main fig ----------------------------------------------------------------
 
 
 bootdat %>% 
@@ -138,6 +142,52 @@ ggsave(
 
 
 
+## alt figure --------------------------------------------------------------
+
+  
+bootdat %>% 
+  filter(samptype == 'out-of-samp') %>% 
+  ggplot(aes(x=mean_ret_scaled, fill=samptype)) +
+  geom_histogram(alpha = 0.8
+                 , position = 'identity'
+                 , breaks = seq(0.2,1.3,0.025)
+                 , aes(y=..density..)
+  ) +
+  theme_minimal(
+    base_size = 15
+  ) + 
+  theme(
+    text = element_text(size=30)
+  ) +
+  labs(x='Pooled Mean Return (% monthly)', y='Desntiy') +
+  geom_vline(xintercept = mean_oos/mean_insamp) +
+  scale_x_continuous(breaks = seq(0,1.25,0.2))
+
+
+
+## alt figure 2 --------------------------------------------------------------
+
+
+bootdat %>% 
+  ggplot(aes(x=mean_ret_scaled, fill=samptype)) +
+  geom_histogram(alpha = 0.8
+                 , position = 'identity'
+                 , breaks = seq(0,1.25,0.025)
+                 , aes(y=..density..)
+  ) +
+  theme_minimal(
+    base_size = 15,
+  ) + 
+  theme(
+    text = element_text(size=30)
+  ) + 
+  scale_fill_manual(
+    values = c('blue', 'gray'), name = "Sample Type"
+  ) +
+  labs(x='Pooled Mean Return (% monthly)', y='Desntiy') +
+  geom_vline(xintercept = 0) +
+  scale_x_continuous(breaks = seq(0,1.25,0.2))+
+  geom_vline(xintercept = mean_oos/mean_insamp)
 
 
 # Generate R2 Replication Figure ----
