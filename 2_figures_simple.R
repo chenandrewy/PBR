@@ -11,6 +11,7 @@ library(googledrive)
 library(gridExtra)
 library(nlme)
 library(stargazer)
+library(lubridate)
 
 
 SUBDIR = 'Full Sets OP'; FILENAME = 'PredictorPortsFull.csv'
@@ -169,10 +170,11 @@ bootdat %>%
 
 
 bootdat %>% 
-  ggplot(aes(x=mean_ret_scaled, fill=samptype)) +
+  mutate(retplot = mean_ret_scaled*100) %>% 
+  ggplot(aes(x=retplot, fill=samptype)) +
   geom_histogram(alpha = 0.8
                  , position = 'identity'
-                 , breaks = seq(0,1.25,0.025)
+                 , breaks = seq(0,125, 5)
                  , aes(y=..density..)
   ) +
   theme_minimal(
@@ -184,10 +186,18 @@ bootdat %>%
   scale_fill_manual(
     values = c('blue', 'gray'), name = "Sample Type"
   ) +
-  labs(x='Pooled Mean Return (% monthly)', y='Desntiy') +
+  labs(x='Pooled Mean Return (bps monthly)', y='Density') +
   geom_vline(xintercept = 0) +
-  scale_x_continuous(breaks = seq(0,1.25,0.2))+
-  geom_vline(xintercept = mean_oos/mean_insamp)
+  scale_x_continuous(breaks = seq(0,125,25))+
+  geom_vline(xintercept = mean_oos/mean_insamp*100)
+
+
+
+ggsave(
+  "../results/MPrep_scaled.pdf",
+  width = 12,
+  height = 8
+)
 
 
 # Generate R2 Replication Figure ----
