@@ -12,6 +12,23 @@ library(gridExtra)
 library(nlme)
 library(stargazer)
 library(lubridate)
+library(latex2exp)
+
+
+# Graph defaults
+MATBLUE = rgb(0,0.4470,0.7410)
+MATRED = rgb(0.8500, 0.3250, 0.0980)
+MATYELLOW = rgb(0.9290, 0.6940, 0.1250)
+
+groupdat = list(
+  group = c('null', 'fit')
+  , color = c(MATRED, MATBLUE, MATYELLOW)
+  , labels = c(
+    TeX('Null ($\\sigma_\\mu=0$)')
+    , TeX('Fit ($\\sigma_\\mu=3$)')
+  )
+  , linetype = c('dashed','solid')
+)
 
 
 SUBDIR = 'Full Sets OP'; FILENAME = 'PredictorPortsFull.csv'
@@ -168,7 +185,6 @@ bootdat %>%
 
 ## alt figure 2 --------------------------------------------------------------
 
-
 bootdat %>% 
   mutate(retplot = mean_ret_scaled*100) %>% 
   ggplot(aes(x=retplot, fill=samptype)) +
@@ -184,14 +200,12 @@ bootdat %>%
     text = element_text(size=30)
   ) + 
   scale_fill_manual(
-    values = c('blue', 'gray'), name = "Sample Type"
+    values = c(groupdat$color[2], 'grey'), name = "Sample Type"
   ) +
   labs(x='Pooled Mean Return (bps monthly)', y='Density') +
   geom_vline(xintercept = 0) +
   scale_x_continuous(breaks = seq(0,125,25))+
   geom_vline(xintercept = mean_oos/mean_insamp*100)
-
-
 
 ggsave(
   "../results/MPrep_scaled.pdf",
@@ -322,7 +336,8 @@ fitcomp %>%
     base_size = 15
   ) +
   theme(
-    legend.position = c(.8, .25)
+    legend.position = c(.8, .25),
+    text = element_text(size=30)
   ) +
   geom_abline(
     aes(slope = 1, intercept = 0)
@@ -331,7 +346,7 @@ fitcomp %>%
     values = c(21, 22, 23), name = tempname
   ) +
   scale_fill_manual(
-    values = c('blue', 'white', 'gray'), name = tempname
+    values = c(groupdat$color), name = tempname
   ) +
   labs(x = 't-stat Original Paper (see legend)'
        , y = 't-stat Replicated (raw)')  +
@@ -342,7 +357,7 @@ fitcomp %>%
 ggsave(
   "../results/raw_op.pdf",
   width = 12,
-  height = 12
+  height = 8
 )
 
 
@@ -358,7 +373,7 @@ library(xtable)
 
 nboot = 10*1000
 ndatemin = 240
-tedge = c(seq(0,6,1), 20)
+tedge = c(seq(0,9, 1), 20)
 
 ## Import ====
 
@@ -481,6 +496,8 @@ tab_too_big = data.frame(
     emp_to_norm = prob_emp / prob_norm
     , N_hack_norm = N_emp/prob_norm
   )
+
+
 tab_too_big = tab_too_big %>% 
   mutate(t_bound = paste(t_left, " - ", t_right), .before=t_left) %>%
   mutate(across(-t_bound, round, 2)) %>%
@@ -541,7 +558,7 @@ ggplot(data.frame(cor = corlong), aes(x=cor)) +
   theme(
     text = element_text(size=30)
   ) + 
-  labs(x = 'Pairwise Correlations'
+  labs(x = 'Number of Principal Components'
        ,y = 'Density')
 
 ggsave(
@@ -575,7 +592,7 @@ ggplot(plotme, aes(color="blue", x=Num_PC, y = pct_explained)) + geom_line() +
     text = element_text(size=30)
   ) + 
   labs(x="Number of Pairwise Correlations", y="% Varaince Explained") +
-  scale_color_manual(values="blue") +
+  scale_color_manual(values=groupdat$color) +
   theme(legend.position="none")
 
 
@@ -725,20 +742,5 @@ ggsave(
   width = 12,
   height = 12
 )
-
-# ggplot(plotme, aes(color="blue", x=Num_PC, y = pct_explained)) + geom_line() +
-#   coord_cartesian(
-#     xlim = c(0,80)
-#   ) + 
-#   geom_line(size = 1.0) + 
-#   theme_minimal(
-#     base_size = 15
-#   ) + 
-#   theme(
-#     text = element_text(size=30)
-#   ) + 
-#   labs(x="Number of Pairwise Correlations", y="% Varaince Explained") +
-#   scale_color_manual(values="blue") +
-#   theme(legend.position="none")
 
 
