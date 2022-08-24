@@ -1,262 +1,6 @@
-# 2022 07 Alec Erb on behalf of Andrew Chen: Generate Simple Figures for PBR
-
-# SETUP ====
-
-rm(list = ls())
-source('functions.r')
-tic = Sys.time()
-dir.create('../results/')
-
-## Globals ====
-library(tidyverse)
-library(data.table)
-library(googledrive)
-library(gridExtra)
-library(nlme)
-library(stargazer)
-library(lubridate)
-library(latex2exp)
-library(Cairo)
-library(xtable) 
-
-
-# graph defaults
-MATBLUE = rgb(0,0.4470,0.7410)
-MATRED = rgb(0.8500, 0.3250, 0.0980)
-MATYELLOW = rgb(0.9290, 0.6940, 0.1250)
-
-groupdat = list(
-  group = c('null', 'fit')
-  , color = c(MATRED, MATBLUE, MATYELLOW)
-  , labels = c(
-    TeX('Null ($\\sigma_\\mu=0$)')
-    , TeX('Fit ($\\sigma_\\mu=3$)')
-  )
-  , linetype = c('dashed','solid')
-)
-
-theme_set(
-  theme_minimal() +
-    theme(
-      text = element_text(family = "Palatino Linotype.ttf")
-    )
-)
-
-
-
-
-# Import Data ====
-
-cz_all = fread("../data/PredictorPortsFull.csv")
-
-signaldoc = fread('../data/SignalDoc.csv')
-
-
-
-# Generate McLean-Pontiff bootstrapped mean returns figure ====
-# read in PredictorPortsFull.csv
-
-# read in SignalDoc.csv and isolates to relevant date cols
-signaldoc_mp = signaldoc %>% 
-  mutate(
-    signalname = Acronym
-    , pubdate = as.Date(paste0(Year, '-12-31'))
-    , sampend = as.Date(paste0(SampleEndYear, '-12-31'))
-    , sampstart = as.Date(paste0(SampleStartYear, '-01-01'))
-  ) %>% 
-  arrange(signalname) %>% 
-  select(signalname, pubdate, sampend, sampstart)
-
-
-# merge and find OOS returns
-ret1 = cz_all %>%                                         
-  filter(!is.na(ret), port == 'LS') %>%                                                           
-  left_join(signaldoc_mp) %>% 
-  mutate(
-    samptype = case_when(
-      (date >= sampstart) & (date <= sampend) ~ 'in-samp'
-      , (date > sampend) & (date <= sampend %m+% months(36)) ~ 'out-of-samp'
-      , (date > pubdate) ~ 'post-pub'
-      , TRUE ~ NA_character_
-    )
-  ) %>% 
-  filter(!is.na(samptype))
-
-
-## bootstrap mean distributions ====
-# clustered by month
-
-set.seed(6)
-nboot = 500
-
-# make wide dataset, use NA if not correct sample
-
-bootfun = function(sampname){
-  
-  # make wide dataset, use NA if not correct sample
-  wide_is = ret1 %>%
-    filter(samptype == sampname) %>% 
-    select(c(date, ret, signalname)) %>%
-    pivot_wider(
-      names_from = "signalname", values_from = "ret"
-    ) %>% 
-    select(-date) %>% 
-    as.matrix()
-  
-  # make array that only has enough signals in each month (10)
-  tgood = rowSums(!is.na(wide_is), na.rm=T) > 10
-  mat = wide_is[tgood, ]
-  T = dim(mat)[1]
-  
-  # bootstrap pooled mean
-  rboot = rep(NA_real_, nboot)
-  for (i in 1:nboot){
-    tempt = sample(1:T, replace = T)
-    rboot[i] = mat[tempt,]  %>% as.vector %>% mean(na.rm=T)
-  }
-  
-  return(rboot)
-  
-} # end bootfun
-
-
-# bootstrap for each sample type
-rboot1 = bootfun('in-samp')
-rboot2 = bootfun('out-of-samp')
-
-mean_insamp = ret1 %>% filter(samptype == 'in-samp') %>% 
-  summarize(meanret = mean(ret)) %>% pull(meanret)
-
-mean_oos = ret1 %>% filter(samptype == 'out-of-samp') %>% 
-  summarize(meanret = mean(ret)) %>% pull(meanret)
-
-
-# compile and plot
-bootdat = data.frame(
-  pooled_mean_ret = rboot1, samptype = 'in-samp' 
-) %>% 
-  rbind(
-    data.frame(
-      pooled_mean_ret = rboot2, samptype = 'out-of-samp' 
-    )
-  ) %>% 
-  mutate(
-    mean_ret_scaled = pooled_mean_ret/mean_insamp
-  )
-
-
-
-## main fig ----------------------------------------------------------------
-
-
-bootdat %>% 
-  ggplot(aes(x=pooled_mean_ret, fill=samptype)) +
-  geom_histogram(alpha = 0.8
-                 , position = 'identity'
-                 , breaks = seq(0,1,0.025)
-                 , aes(y=..density..)
-  ) +
-  theme_minimal(
-    base_size = 15,
-  ) + 
-  theme(
-    text = element_text(size=30)
-  ) + 
-  scale_fill_manual(
-    values = c('blue', 'gray'), name = "Sample Type"
-  ) +
-  labs(x='Pooled Mean Return (% monthly)', y='Desntiy') +
-  geom_vline(xintercept = 0)
-
-ggsave(
-  "../results/MPrep.png",
-  width = 12,
-  height = 12
-)
-
-
-
-## alt figure --------------------------------------------------------------
-
-
-bootdat %>% 
-  filter(samptype == 'out-of-samp') %>% 
-  ggplot(aes(x=mean_ret_scaled, fill=samptype)) +
-  geom_histogram(alpha = 0.8
-                 , position = 'identity'
-                 , breaks = seq(0.2,1.3,0.025)
-                 , aes(y=..density..)
-  ) +
-  theme_minimal(
-    base_size = 15
-  ) + 
-  theme(
-    text = element_text(size=30)
-  ) +
-  labs(x='Pooled Mean Return (% monthly)', y='Desntiy') +
-  geom_vline(xintercept = mean_oos/mean_insamp) +
-  scale_x_continuous(breaks = seq(0,1.25,0.2))
-
-
-
-## alt figure 2 --------------------------------------------------------------
-
-bootdat %>% 
-  mutate(retplot = mean_ret_scaled*100) %>% 
-  ggplot(aes(x=retplot, fill=samptype)) +
-  geom_histogram(alpha = 0.8
-                 , position = 'identity'
-                 , breaks = seq(0,125, 5)
-                 , aes(y=..density..)
-  ) +
-  theme_minimal(
-    base_size = 15,
-  ) + 
-  theme(
-    text = element_text(size=40, family = "Palatino Linotype"),
-    legend.title=element_text(size=40)
-  ) + 
-  scale_fill_manual(
-    values = c(groupdat$color[2], 'grey'), name = "Sample Type"
-  ) +
-  labs(x='Pooled Mean Return (bps monthly)', y='Density') +
-  geom_vline(xintercept = 0) +
-  scale_x_continuous(breaks = seq(0,125,25))+
-  geom_vline(xintercept = mean_oos/mean_insamp*100)
-
-ggsave(
-  "../results/MPrep_scaled.pdf",
-  width = 12,
-  height = 8,
-  device = cairo_pdf
-)
-
-
 # Generate R2 Replication Figure ----
-
-## Import ====
-signaldoc_r2 =  signaldoc %>% 
-  rename(signalname = Acronym) %>% 
-  select(-c(`Detailed Definition`, `Notes`))
-
-
-cz_r2 = cz_all %>% 
-  mutate(vint = 2022) %>% 
-  rbind(
-    cz_all %>% 
-      mutate(vint = 2021)
-  ) %>% 
-  select(vint, signalname, port, date, ret) %>% 
-  left_join(
-    signaldoc_r2 %>% select(signalname, SampleStartYear, SampleEndYear)
-    , by = 'signalname'
-  ) %>% 
-  mutate(
-    insamp = (year(date) >= SampleStartYear) &  (year(date) <= SampleEndYear)
-  ) 
-
 ## Performance Measures ====
-target_data = cz_r2 %>%
+target_data = czsum %>%
   filter(vint == 2022 & insamp & port == 'LS') %>% 
   mutate(yearm = year(date)*100 + month(date)) %>% 
   select(signalname, yearm, ret)
@@ -282,7 +26,7 @@ ablines = tibble(slope = 1,
 
 
 # select comparable t-stats
-fit_OP = signaldoc_r2 %>% 
+fit_OP = signaldoc %>% 
   mutate(
     tstat_OP = abs(as.numeric(`T-Stat`))
   ) %>% 
@@ -300,7 +44,7 @@ fit_OP = signaldoc_r2 %>%
 catname = c('raw','factor or char adjusted','nonstandard lag')
 
 # select comparable t-stats
-fit_OP = signaldoc_r2 %>% 
+fit_OP = signaldoc %>% 
   mutate(
     tstat_OP = abs(as.numeric(`T-Stat`))
   ) %>% 
@@ -380,7 +124,6 @@ ggsave(
 
 
 # Generate t too big figure ====
-
 ## settings ====
 # for nboot = 1000, takes 20 seconds.  
 # nboot = 10,000 takes 3 minutes.  This is about 20 million predictors
@@ -388,27 +131,8 @@ nboot = 10*1000
 ndatemin = 240
 tedge = c(seq(0,9, 1), 20)
 
-
-## Import ====
-# All signals
-signaldoc_ttb = signaldoc %>%
-  rename(signalname = Acronym) %>%
-  select(-c(`Detailed Definition`, `Notes`))
-
-
-# Chen-Zimmerman dataset
-cz_ttb = cz_all  %>% 
-  select(signalname, port, date, ret) %>%
-  left_join(
-    signaldoc_ttb %>% select(signalname, SampleStartYear, SampleEndYear)
-    , by = 'signalname'
-  ) %>%
-  mutate(
-    insamp = (year(date) >= SampleStartYear) &  (year(date) <= SampleEndYear)
-  )
-
 # Performance Measures 
-target_data = cz_ttb %>% 
+target_data = czsum %>% 
   filter(insamp & port == 'LS') %>% 
   mutate(yearm = year(date)*100 + month(date)) %>% 
   select(signalname, yearm, ret)
@@ -428,8 +152,8 @@ fit_all = target_data[
 
 ## bootstrap ====
 # residuals
-cz_ttb = cz_ttb %>% 
-  filter(insamp, port == 'LS') %>% 
+czbs = czsum %>% 
+  filter(vint == 2022, insamp, port == 'LS') %>% 
   group_by(signalname) %>% 
   mutate(
     e = as.vector(scale(ret, center = T, scale = F))
@@ -443,10 +167,10 @@ cz_ttb = cz_ttb %>%
 # fast binding based on https://stackoverflow.com/questions/19697700/how-to-speed-up-rbind
 boot = data.table()
 boot_once = function(){
-  dateselect = sample(1:dim(cz_ttb)[1], ndatemax, replace = T)
+  dateselect = sample(1:dim(czbs)[1], ndatemax, replace = T)
   
   # draw returns, clustered by month
-  eboot = cz_ttb[dateselect, ]
+  eboot = czbs[dateselect, ]
   
   # summarize each predictor
   ebar = apply(eboot, 2, mean, na.rm=T)
@@ -464,7 +188,7 @@ boot_once = function(){
 }
 
 # bootstrap!!
-ndatemax = dim(cz_ttb)[1]
+ndatemax = dim(czbs)[1]
 tic = Sys.time()
 set.seed(1057)
 bootdat = rbindlist(lapply(1:nboot, function(x) boot_once()))
@@ -522,24 +246,9 @@ print(xtable(tab_too_big_wide, type = "latex"), file = "../results/tab-too-big.t
 
 # Correlation Figures ------------------------------------------------------
 
-# import data
-signaldoc_corr =  signaldoc %>%
-  rename(signalname = Acronym) %>%
-  select(-c(`Detailed Definition`, `Notes`))
-
-cz_corr = cz_all  %>% 
-  select(signalname, port, date, ret) %>%
-  left_join(
-    signaldoc_corr %>% select(signalname, SampleStartYear, SampleEndYear)
-    , by = 'signalname'
-  ) %>%
-  mutate(
-    insamp = (year(date) >= SampleStartYear) &  (year(date) <= SampleEndYear)
-  )
-
 # use full sample for most overlap
-retmat = cz_corr %>% 
-  filter(port == 'LS') %>% 
+retmat = czsum %>% 
+  filter(vint == 2022, port == 'LS') %>% 
   select(signalname, date, ret) %>% 
   pivot_wider(names_from = signalname, values_from = ret) %>%
   select(-date) %>% 
@@ -604,39 +313,8 @@ ggsave(
 
 
 # Filling the Gap ====
-
-
-## environment -------------------------------------------------------------
-# read returns
-cz_gap = cz_all %>%                                           
-  filter(!is.na(ret), port == 'LS')
-
-# read in SignalDoc.csv and isolates to relevant date cols
-signaldoc_gap = signaldoc %>% 
-  mutate(
-    signalname = Acronym
-    , pubdate = as.Date(paste0(Year, '-12-31'))
-    , sampend = as.Date(paste0(SampleEndYear, '-12-31'))
-    , sampstart = as.Date(paste0(SampleStartYear, '-01-01'))
-  ) %>% 
-  arrange(signalname) %>% 
-  select(signalname, pubdate, sampend, sampstart)
-
-# merge 
-ret1 = cz_gap %>%                                                                
-  left_join(signaldoc_gap) %>% 
-  mutate(
-    samptype = case_when(
-      (date >= sampstart) & (date <= sampend) ~ 'in-samp'
-      , (date > sampend) & (date <= pubdate) ~ 'out-of-samp'
-      , (date > pubdate) ~ 'post-pub'
-      , TRUE ~ NA_character_
-    )
-  ) %>% 
-  filter(!is.na(samptype))
-
 # find empirical t-stats
-t_emp = ret1 %>% filter(samptype == 'in-samp', port == 'LS') %>% 
+t_emp = czret %>% filter(samptype == 'in-samp', port == 'LS') %>% 
   group_by(signalname) %>% 
   summarize(
     tstat = mean(ret)/sd(ret)*sqrt(dplyr::n())
@@ -792,36 +470,20 @@ temp = data.table(
 bias_dat = fread("output/pubcross.csv") %>% 
   left_join(temp, by = 'tabs')
 
-# read in PredictorPortsFull.csv
-cz_bias = cz_all %>%                                           
-  filter(!is.na(ret), port == 'LS')
-
 # read in SignalDoc.csv and isolates to relevant date cols
 signaldoc_bias = signaldoc %>% 
   mutate(
-    signalname = Acronym
-    , pubdate = as.Date(paste0(Year, '-12-31'))
+    pubdate = as.Date(paste0(Year, '-12-31'))
     , sampend = as.Date(paste0(SampleEndYear, '-12-31'))
     , sampstart = as.Date(paste0(SampleStartYear, '-01-01'))
   ) %>% 
   arrange(signalname) %>% 
   select(signalname, pubdate, sampend, sampstart)
 
-# merge 
-ret1 = cz_bias %>%                                                                 ## merging, on signalname, returns and date (sampend, sampstart, pubdate) data
-  left_join(signaldoc_bias) %>% 
-  mutate(
-    samptype = case_when(
-      (date >= sampstart) & (date <= sampend) ~ 'insamp'
-      , (date > sampend) & (date <= pubdate) ~ 'between'
-      , (date > pubdate) ~ 'postpub'
-      , TRUE ~ NA_character_
-    )
-  ) %>% 
-  filter(!is.na(samptype), !is.na(ret))
 
 # find mean returns by sample, merge and find muhat
-retsum = ret1 %>% 
+retsum = czret %>% 
+  mutate(samptype = recode(samptype, "in-samp" = "insamp")) %>%
   group_by(signalname, samptype) %>%  
   summarize(
     rbar = mean(ret)
@@ -836,28 +498,32 @@ retsum = ret1 %>%
   )
 
 
-# plot sketch
+## plot ----
 plotme = retsum %>% select(signalname, insamp, between, muhat) %>% 
   pivot_longer(cols = c(between,muhat), names_to = 'group', values_to = 'y')
 
-ggplot(plotme, aes(color = "blue", x=insamp, y=y, group = group)) +
-  geom_point(aes(color = group)) +
-  theme_minimal(
-    base_size = 15) +
-  theme(
-    text = element_text(size=30)
-  ) +
-  scale_color_manual(
-    values = c('gray', 'blue'), name = "Sample Type"
-  ) +
-  labs(x = "In Sample Return", y = "Predicted Return")
+# ggplot(plotme, aes(color = "blue", x=insamp, y=y, group = group)) +
+#   geom_point(aes(color = group)) +
+#   geom_smooth(method="auto") +
+#   theme_minimal(
+#     base_size = 15) +
+#   theme(
+#     text = element_text(size=30, family="Palatino Linotype")
+#   ) +
+#   scale_color_manual(
+#     values = c('gray', 'blue'), name = "Sample Type"
+#   ) +
+#   labs(x = "In Sample Return", y = "Predicted Return")
+# 
+# 
+# ggsave(
+#   "../results/structural_figure.pdf",
+#   width = 12,
+#   height = 12,
+#   device = cairo_pdf
+# )
 
 
-ggsave(
-  "../results/structural_figure.pdf",
-  width = 12,
-  height = 12,
-  device = cairo_pdf
-)
+
 
 
