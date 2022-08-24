@@ -605,8 +605,8 @@ ggsave(
 
 # Filling the Gap ====
 
-## environment -------------------------------------------------------------
 
+## environment -------------------------------------------------------------
 # read returns
 cz_gap = cz_all %>%                                           
   filter(!is.na(ret), port == 'LS')
@@ -621,7 +621,6 @@ signaldoc_gap = signaldoc %>%
   ) %>% 
   arrange(signalname) %>% 
   select(signalname, pubdate, sampend, sampstart)
-
 
 # merge 
 ret1 = cz_gap %>%                                                                
@@ -645,9 +644,7 @@ t_emp = ret1 %>% filter(samptype == 'in-samp', port == 'LS') %>%
   pull(tstat)
 
 
-
 ## make plotting data ----------------------------------------------------------------
-
 # set up 
 edge = seq(0,20,0.5)
 t_left = edge[1:(length(edge)-1)]
@@ -695,8 +692,6 @@ dat_all = rbind(dat_emp,dat_null,dat_fit) %>%
 
 
 ## plot --------------------------------------------------------------------
-
-
 groupdat = tibble(
   group = c('null', 'fit')
   , color = c(MATRED, MATBLUE)
@@ -734,14 +729,7 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
     xlim = c(0,10), ylim = c(0,0.25)
   )  
 
-
 ggsave('../results/filling-the-gap.pdf', width = 12, height = 8, device = cairo_pdf)
-
-
-
-
-
-
 
 
 
@@ -784,25 +772,24 @@ shrink <- (1/(lambda$root**2))
 
 est.point = estimate(
   est.set = set.check
-  , tabs = cz_filt_tabs
+  , tabs = t_emp
   , par.guess = random_guess(set.check,1,1243)
   , print_level = 3
 )
 
-temp = make_stats_pub(cz_filt_tabs,est.point$par) # for now assume signs don't matter
+temp = make_stats_pub(t_emp,est.point$par) # for now assume signs don't matter
 est.point$bias = temp$bias
 est.point$fdrloc = temp$fdr_tabs
 
 est.point$par %>% print()
-est.point$negloglike %>% print()
 
 ## merge bias onto cz data with signalnames ====
 # this isn't pretty but it'll do for now
 temp = data.table(
-  tabs = cz_filt_tabs, bias = est.point$bias
+  tabs = t_emp, bias = est.point$bias
 )
 
-bias_dat = import_cz(dl = T) %>% 
+bias_dat = fread("output/pubcross.csv") %>% 
   left_join(temp, by = 'tabs')
 
 # read in PredictorPortsFull.csv
