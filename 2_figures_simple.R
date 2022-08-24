@@ -1,3 +1,246 @@
+# 2022 07 Alec Erb on behalf of Andrew Chen: Generate Simple Figures for PBR
+
+# SETUP ====
+
+rm(list = ls())
+source('functions.r')
+tic = Sys.time()
+dir.create('../results/')
+
+## Globals ====
+library(tidyverse)
+library(data.table)
+library(googledrive)
+library(gridExtra)
+library(nlme)
+library(stargazer)
+library(lubridate)
+library(latex2exp)
+library(Cairo)
+library(xtable) 
+
+
+# graph defaults
+MATBLUE = rgb(0,0.4470,0.7410)
+MATRED = rgb(0.8500, 0.3250, 0.0980)
+MATYELLOW = rgb(0.9290, 0.6940, 0.1250)
+
+groupdat = list(
+  group = c('null', 'fit')
+  , color = c(MATRED, MATBLUE, MATYELLOW)
+  , labels = c(
+    TeX('Null ($\\sigma_\\mu=0$)')
+    , TeX('Fit ($\\sigma_\\mu=3$)')
+  )
+  , linetype = c('dashed','solid')
+)
+
+theme_set(
+  theme_minimal() +
+    theme(
+      text = element_text(family = "Palatino Linotype.ttf")
+    )
+)
+
+
+
+
+# Import Data ====
+cz_all = fread("../data/PredictorPortsFull.csv")
+signaldoc = fread('../data/SignalDoc.csv')
+
+
+
+
+# Prepare Data ====
+signaldoc = signaldoc %>% rename(signalname = Acronym)
+
+## CZRET ----
+signaldoc_dates = signaldoc %>% 
+  mutate(
+    pubdate = as.Date(paste0(Year, '-12-31'))
+    , sampend = as.Date(paste0(SampleEndYear, '-12-31'))
+    , sampstart = as.Date(paste0(SampleStartYear, '-01-01'))
+  ) %>% 
+  arrange(signalname) %>% 
+  select(signalname, pubdate, sampend, sampstart)
+
+czret = cz_all %>%                                         
+  filter(!is.na(ret), port == 'LS') %>%                                                           
+  left_join(signaldoc_dates) %>% 
+  mutate(
+    samptype = case_when(
+      (date >= sampstart) & (date <= sampend) ~ 'in-samp'
+      , (date > sampend) & (date <= sampend %m+% months(36)) ~ 'out-of-samp'
+      , (date > pubdate) ~ 'post-pub'
+      , TRUE ~ NA_character_
+    )
+  ) %>% 
+  filter(!is.na(samptype))
+
+
+## CZSUM ----
+czsum = cz_all %>% 
+  mutate(vint = 2022) %>% 
+  rbind(
+    cz_all %>% 
+      mutate(vint = 2021)
+  ) %>% 
+  select(vint, signalname, port, date, ret) %>% 
+  left_join(signaldoc %>% 
+              select(signalname, SampleStartYear, SampleEndYear)
+            , by = 'signalname'
+  ) %>% 
+  mutate(
+    insamp = (year(date) >= SampleStartYear) &  (year(date) <= SampleEndYear)
+  ) 
+
+
+
+
+
+# Generate McLean-Pontiff bootstrapped mean returns figure ====
+
+## bootstrap mean distributions ====
+# clustered by month
+set.seed(6)
+nboot = 500
+
+
+bootfun = function(sampname){
+  # make wide dataset, use NA if not correct sample
+  wide_is = czret %>%
+    filter(samptype == sampname) %>% 
+    select(c(date, ret, signalname)) %>%
+    pivot_wider(
+      names_from = "signalname", values_from = "ret"
+    ) %>% 
+    select(-date) %>% 
+    as.matrix()
+  
+  # make array that only has enough signals in each month (10)
+  tgood = rowSums(!is.na(wide_is), na.rm=T) > 10
+  mat = wide_is[tgood, ]
+  T = dim(mat)[1]
+  
+  # bootstrap pooled mean
+  rboot = rep(NA_real_, nboot)
+  for (i in 1:nboot){
+    tempt = sample(1:T, replace = T)
+    rboot[i] = mat[tempt,]  %>% as.vector %>% mean(na.rm=T)
+  }
+  
+  return(rboot)
+  
+}
+
+# bootstrap for each sample type
+rboot1 = bootfun('in-samp')
+rboot2 = bootfun('out-of-samp')
+
+mean_insamp = czret %>% filter(samptype == 'in-samp') %>% 
+  summarize(meanret = mean(ret)) %>% pull(meanret)
+
+mean_oos = czret %>% filter(samptype == 'out-of-samp') %>% 
+  summarize(meanret = mean(ret)) %>% pull(meanret)
+
+# compile and plot
+bootdat = data.frame(
+  pooled_mean_ret = rboot1, samptype = 'in-samp' 
+) %>% 
+  rbind(
+    data.frame(
+      pooled_mean_ret = rboot2, samptype = 'out-of-samp' 
+    )
+  ) %>% 
+  mutate(
+    mean_ret_scaled = pooled_mean_ret/mean_insamp
+  )
+
+
+## main fig ----------------------------------------------------------------
+bootdat %>% 
+  ggplot(aes(x=pooled_mean_ret, fill=samptype)) +
+  geom_histogram(alpha = 0.8
+                 , position = 'identity'
+                 , breaks = seq(0,1,0.025)
+                 , aes(y=..density..)
+  ) +
+  theme_minimal(
+    base_size = 15,
+  ) + 
+  theme(
+    text = element_text(size=30)
+  ) + 
+  scale_fill_manual(
+    values = c('blue', 'gray'), name = "Sample Type"
+  ) +
+  labs(x='Pooled Mean Return (% monthly)', y='Desntiy') +
+  geom_vline(xintercept = 0)
+
+ggsave(
+  "../results/MPrep.png",
+  width = 12,
+  height = 12
+)
+
+
+
+## alt figure --------------------------------------------------------------
+bootdat %>% 
+  filter(samptype == 'out-of-samp') %>% 
+  ggplot(aes(x=mean_ret_scaled, fill=samptype)) +
+  geom_histogram(alpha = 0.8
+                 , position = 'identity'
+                 , breaks = seq(0.2,1.3,0.025)
+                 , aes(y=..density..)
+  ) +
+  theme_minimal(
+    base_size = 15
+  ) + 
+  theme(
+    text = element_text(size=30)
+  ) +
+  labs(x='Pooled Mean Return (% monthly)', y='Desntiy') +
+  geom_vline(xintercept = mean_oos/mean_insamp) +
+  scale_x_continuous(breaks = seq(0,1.25,0.2))
+
+
+
+## alt figure 2 --------------------------------------------------------------
+bootdat %>% 
+  mutate(retplot = mean_ret_scaled*100) %>% 
+  ggplot(aes(x=retplot, fill=samptype)) +
+  geom_histogram(alpha = 0.8
+                 , position = 'identity'
+                 , breaks = seq(0,125, 5)
+                 , aes(y=..density..)
+  ) +
+  theme_minimal(
+    base_size = 15,
+  ) + 
+  theme(
+    text = element_text(size=40, family = "Palatino Linotype"),
+    legend.title=element_text(size=40)
+  ) + 
+  scale_fill_manual(
+    values = c(groupdat$color[2], 'grey'), name = "Sample Type"
+  ) +
+  labs(x='Pooled Mean Return (bps monthly)', y='Density') +
+  geom_vline(xintercept = 0) +
+  scale_x_continuous(breaks = seq(0,125,25))+
+  geom_vline(xintercept = mean_oos/mean_insamp*100)
+
+ggsave(
+  "../results/MPrep_scaled.pdf",
+  width = 12,
+  height = 8,
+  device = cairo_pdf
+)
+
+
+
+
 # Generate R2 Replication Figure ----
 ## Performance Measures ====
 target_data = czsum %>%
@@ -522,8 +765,5 @@ plotme = retsum %>% select(signalname, insamp, between, muhat) %>%
 #   height = 12,
 #   device = cairo_pdf
 # )
-
-
-
 
 
