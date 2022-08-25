@@ -19,7 +19,6 @@ library(latex2exp)
 library(Cairo)
 library(xtable) 
 
-
 # graph defaults
 MATBLUE = rgb(0,0.4470,0.7410)
 MATRED = rgb(0.8500, 0.3250, 0.0980)
@@ -93,15 +92,12 @@ czsum = cz_all %>%
 
 
 
-
 # Generate McLean-Pontiff bootstrapped mean returns figure ====
 
 ## bootstrap mean distributions ====
 # clustered by month
 set.seed(6)
 nboot = 500
-
-
 bootfun = function(sampname){
   # make wide dataset, use NA if not correct sample
   wide_is = czret %>%
@@ -362,8 +358,6 @@ bootsum = bootdat %>%
 # empirical cdf
 pemp = ecdf(t_insamp$tstat)
 
-# add bootstrap cdf??
-
 # table settings
 t_left  = tedge[1:(length(tedge)-1)]
 t_right = tedge[2:length(tedge)]
@@ -568,29 +562,6 @@ ggsave('../results/filling-the-gap.pdf', width = 12, height = 8, device = cairo_
 
 
 # Shrinkage Figure ----
-## estimation settings  ====
-set.check = list(
-  opt_method = 'two-stage' # 'two-stage' or 'crs-only' or 'pif-grid'
-  , opt_list1 = opts.crs(maxeval = 200)
-  , opt_list2 = opts.qa(xtol_rel = 1e-3)  
-  , model_fam = data.frame(
-    mufam   = 'lognormraw' 
-    , pif     = c(NA, 0.01, 0.99)
-    , mua     = c(NA,    0, 2) # mua = 0 => median = 1.0
-    , siga    = c(NA, 0.05, 1) # siga > 1 leads to crazy variances
-    , pubfam  = 'stair' # 'stair' or 'piecelin' or 'trunc'  
-    , pubpar1 = c(NA,  1/3, 2/3)
-    , row.names  = c('base','lb','ub')  
-  )  
-)
-
-
-## simulation settings ====
-piflist = seq(0.1,0.9,length.out = 3)
-rholist = seq(0.1,0.9,length.out = 3)
-nportlist = c(200)
-n_miniboot = 100
-
 
 ## point estimate ----------------------------------------------------------
 tic = Sys.time()
@@ -603,90 +574,74 @@ lambda <- uniroot(trunc_normal, interval = c(.5, 10), tol = .00001)
 # shrinkage formula (RAPS)
 shrink <- (1/(lambda$root**2))
 
-est.point = estimate(
-  est.set = set.check
-  , tabs = t_emp
-  , par.guess = random_guess(set.check,1,1243)
-  , print_level = 3
-)
-
-temp = make_stats_pub(t_emp,est.point$par) # for now assume signs don't matter
-est.point$bias = temp$bias
-est.point$fdrloc = temp$fdr_tabs
-
-est.point$par %>% print()
-
-## merge bias onto cz data with signalnames ====
-# this isn't pretty but it'll do for now
-temp = data.table(
-  tabs = t_emp, bias = est.point$bias
-)
-
-bias_dat = fread("output/pubcross.csv") %>% 
-  left_join(temp, by = 'tabs')
-
-# read in SignalDoc.csv and isolates to relevant date cols
-signaldoc_bias = signaldoc %>% 
-  mutate(
-    pubdate = as.Date(paste0(Year, '-12-31'))
-    , sampend = as.Date(paste0(SampleEndYear, '-12-31'))
-    , sampstart = as.Date(paste0(SampleStartYear, '-01-01'))
-  ) %>% 
-  arrange(signalname) %>% 
-  select(signalname, pubdate, sampend, sampstart)
 
 
-# find mean returns by sample, merge and find muhat
-retsum = czret %>% 
-  mutate(samptype = recode(samptype, "in-samp" = "insamp", "post-pub" = "between")) %>%
-  group_by(signalname, samptype) %>%  
-  summarize(
-    rbar = mean(ret)
-  ) %>% 
-  pivot_wider(names_from = samptype, values_from = rbar) %>% 
-  left_join(
-    bias_dat %>% select(signalname, bias)
-    , by = 'signalname'
-  ) %>% 
-  mutate(
-    muhat = insamp * (1-shrink)
-  )
 
 
 ## plot ----
-plotme = retsum %>% select(signalname, insamp, between, muhat) %>% 
-  pivot_longer(cols = c(between,muhat), names_to = 'group', values_to = 'y')
 
+plotme = czret %>% 
+  group_by(samptype, signalname) %>% 
+  summarise(mean = mean(ret)) %>%
+  pivot_wider(names_from = samptype, values_from = mean) %>%
+  mutate(
+    muhat = `in-samp` * (1-shrink)
+  ) %>%
+  select(signalname, `out-of-samp`, `in-samp`, muhat) %>%
+  pivot_longer(cols = c(`out-of-samp`, muhat), names_to = 'group', values_to = 'y')
 
 # get regression coefficients for muhat data to draw abline
-coefficients = plotme[plotme$group == "muhat", c('insamp', 'y')]
-coefficients = summary(lm(y ~ insamp, data=coefficients))
+coefficients = plotme[plotme$group == "muhat", c('in-samp', 'y')]
+coefficients = summary(lm(y ~ `in-samp`, data=coefficients))
 muhat_intercept = coefficients$coefficients['(Intercept)', 'Estimate']
-muhat_slope = coefficients$coefficients['insamp', 'Estimate']
+muhat_slope = coefficients$coefficients['`in-samp`', 'Estimate']
 
 
 # override aes code from https://aosmith.rbind.io/2020/07/09/ggplot2-override-aes/
-ggplot(plotme %>% filter(group == "between"), aes(x=insamp, y=y)) +
-  theme_minimal(
-    base_size = 15) +
-  theme(
-    text = element_text(size=30, family="Palatino Linotype"),
-    legend.position = c(.2, .75),
-  ) +
-  geom_abline(
-    size = 1,
-    color = MATBLUE,
-    aes(alpha = "Fitted", slope = muhat_slope, intercept = muhat_intercept, color="Muhat")
-  ) + 
-  geom_point(color = MATRED, aes(alpha = "Between")) +
-  labs(x = "In Sample Return", y = "Predicted Return") +
-  scale_alpha_manual(name = NULL,
-                     values = c(1, 1),
-                     breaks = c("Between", "Fitted"),
-                     guide = guide_legend(override.aes = list(linetype = c(0, 1),
-                                                              shape = c(16, NA),
-                                                              color = c(MATRED, MATBLUE) ) ) )
+# ggplot(plotme %>% filter(group == "between"), aes(x=insamp, y=y)) +
+#   theme_minimal(
+#     base_size = 15) +
+#   theme(
+#     text = element_text(size=30, family="Palatino Linotype"),
+#     legend.position = c(.2, .75),
+#   ) +
+#   geom_abline(
+#     size = 1,
+#     color = MATBLUE,
+#     aes(alpha = "Fitted", slope = muhat_slope, intercept = muhat_intercept, color="Muhat")
+#   ) + 
+#   geom_point(color = MATRED, aes(alpha = "Between")) +
+#   labs(x = "In Sample Return", y = "Predicted Return") +
+#   scale_alpha_manual(name = NULL,
+#                      values = c(1, 1),
+#                      breaks = c("Between", "Fitted"),
+#                      guide = guide_legend(override.aes = list(linetype = c(0, 1),
+#                                                               shape = c(16, NA),
+#                                                               color = c(MATRED, MATBLUE) ) ) )
+# 
 
+ggplot(plotme %>% filter(group == "out-of-samp"), aes(x=`in-samp`, y=y)) +
+  theme_minimal(
+    base_size = 15
+  ) +
+  theme(
+    text = element_text(size=40, family="Palatino Linotype"),
+    legend.position = c(.8, .25),
+  ) +
+  geom_point(size = 4, color = MATRED, aes(alpha = "OOS")) +
+  geom_abline(size = 2, color = MATBLUE, 
+              aes(alpha = "Fitted", slope = muhat_slope, intercept = muhat_intercept, color="Muhat")
+  ) +
+  scale_alpha_manual(name = NULL,
+                       values = c(1, 1),
+                       breaks = c("OOS", "Fitted"),
+                       guide = guide_legend(override.aes = list(linetype = c(0, 1),
+                                                                shape = c(16, NA),
+                                                                color = c(MATRED, MATBLUE) ) ) ) +
+
+  labs(x="In Sample Returns", y="Out of Sample Returns") +
+  xlim(-.1, 3) + 
+  ylim(-.5, 3)
 
 ggsave(
   "../results/shrinkage_figure.pdf",
