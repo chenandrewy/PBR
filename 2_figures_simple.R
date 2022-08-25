@@ -708,6 +708,12 @@ plotme = retsum %>% select(signalname, insamp, between, muhat) %>%
   pivot_longer(cols = c(between,muhat), names_to = 'group', values_to = 'y')
 
 
+# get regression coefficients for muhat data to draw abline
+coefficients = plotme[plotme$group == "muhat", c('insamp', 'y')]
+coefficients = summary(lm(y ~ insamp, data=coefficients))
+muhat_intercept = coefficients$coefficients['(Intercept)', 'Estimate']
+muhat_slope = coefficients$coefficients['insamp', 'Estimate']
+
 ggplot(plotme, aes(color = "blue", x=insamp, y=y, group = group)) +
   geom_point(aes(color = group)) +
   theme_minimal(
@@ -715,8 +721,11 @@ ggplot(plotme, aes(color = "blue", x=insamp, y=y, group = group)) +
   theme(
     text = element_text(size=30, family="Palatino Linotype")
   ) +
+  geom_abline(
+    aes(slope = muhat_slope, intercept = muhat_intercept)
+  ) + 
   scale_color_manual(
-    values = c('gray', 'blue'), name = "Sample Type"
+    values = c('gray', MATBLUE), name = "Sample Type"
   ) +
   labs(x = "In Sample Return", y = "Predicted Return")
 
