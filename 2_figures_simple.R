@@ -152,57 +152,7 @@ bootdat = data.frame(
     mean_ret_scaled = pooled_mean_ret/mean_insamp
   )
 
-
-## main fig ----------------------------------------------------------------
-bootdat %>% 
-  ggplot(aes(x=pooled_mean_ret, fill=samptype)) +
-  geom_histogram(alpha = 0.8
-                 , position = 'identity'
-                 , breaks = seq(0,1,0.025)
-                 , aes(y=..density..)
-  ) +
-  theme_minimal(
-    base_size = 15,
-  ) + 
-  theme(
-    text = element_text(size=30)
-  ) + 
-  scale_fill_manual(
-    values = c('blue', 'gray'), name = "Sample Type"
-  ) +
-  labs(x='Pooled Mean Return (% monthly)', y='Desntiy') +
-  geom_vline(xintercept = 0)
-
-ggsave(
-  "../results/MPrep.png",
-  width = 12,
-  height = 12
-)
-
-
-
-## alt figure --------------------------------------------------------------
-bootdat %>% 
-  filter(samptype == 'out-of-samp') %>% 
-  ggplot(aes(x=mean_ret_scaled, fill=samptype)) +
-  geom_histogram(alpha = 0.8
-                 , position = 'identity'
-                 , breaks = seq(0.2,1.3,0.025)
-                 , aes(y=..density..)
-  ) +
-  theme_minimal(
-    base_size = 15
-  ) + 
-  theme(
-    text = element_text(size=30)
-  ) +
-  labs(x='Pooled Mean Return (% monthly)', y='Desntiy') +
-  geom_vline(xintercept = mean_oos/mean_insamp) +
-  scale_x_continuous(breaks = seq(0,1.25,0.2))
-
-
-
-## alt figure 2 --------------------------------------------------------------
+## plot --------------------------------------------------------------
 bootdat %>% 
   mutate(retplot = mean_ret_scaled*100) %>% 
   ggplot(aes(x=retplot, fill=samptype)) +
@@ -739,7 +689,7 @@ ggplot(plotme %>% filter(group == "between"), aes(x=insamp, y=y)) +
 
 
 ggsave(
-  "../results/structural_figure.pdf",
+  "../results/shrinkage_figure.pdf",
   width = 12,
   height = 8,
   device = cairo_pdf
