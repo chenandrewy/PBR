@@ -238,22 +238,9 @@ ggsave(
 
 # Generate R2 Replication Figure ----
 ## Performance Measures ====
-target_data = czsum %>%
-  filter(insamp & port == 'LS') %>% 
-  mutate(yearm = year(date)*100 + month(date)) %>% 
-  select(signalname, yearm, ret)
-
-# no adjustment
-fit_raw = target_data[
-  , list(
-    alpha = summary(lm(ret~1))$coefficients['(Intercept)' , 'Estimate']
-    , tstat = summary(lm(ret~1))$coefficients['(Intercept)' , 't value']
-  )
-  , by=signalname
-] %>% 
-  mutate(
-    model = 'raw'
-  )
+t_insamp = czsum %>% filter(port == "LS" & insamp) %>%
+  group_by(signalname) %>%
+  summarize(tstat = abs(mean(ret)/sd(ret)*sqrt(dplyr::n())))
 
 
 ## Name Scatter cleaner ====
@@ -316,8 +303,7 @@ fit_OP = signaldoc %>%
 
 ## Raw vs OP plot ====
 # merge 
-fitcomp = fit_raw %>% 
-  filter(model == 'raw') %>% 
+fitcomp = t_insamp %>% 
   rename(tstat_CZ = tstat) %>% 
   inner_join(
     fit_OP
@@ -368,25 +354,6 @@ ggsave(
 nboot = 10*1000
 ndatemin = 240
 tedge = c(seq(0,9, 1), 20)
-
-# Performance Measures 
-target_data = czsum %>% 
-  filter(insamp & port == 'LS') %>% 
-  mutate(yearm = year(date)*100 + month(date)) %>% 
-  select(signalname, yearm, ret)
-
-# no adjustment
-fit_all = target_data[
-  , list(
-    alpha = summary(lm(ret~1))$coefficients['(Intercept)' , 'Estimate']
-    , tstat = summary(lm(ret~1))$coefficients['(Intercept)' , 't value']
-  )
-  , by=signalname
-] %>% 
-  mutate(
-    model = 'raw'
-  )
-
 
 ## bootstrap ====
 # residuals
@@ -443,7 +410,7 @@ bootsum = bootdat %>%
 
 ## Make Table ====
 # empirical cdf
-pemp = ecdf(fit_all$tstat)
+pemp = ecdf(t_insamp)
 
 # add bootstrap cdf??
 
@@ -455,7 +422,7 @@ t_right = tedge[2:length(tedge)]
 tab_too_big = data.frame(
   t_left 
   , t_right
-  , N_emp = length(fit_all$tstat)*(pemp(t_right) - pemp(t_left))
+  , N_emp = length(t_insamp$tstat)*(pemp(t_right) - pemp(t_left))
   , prob_emp = pemp(t_right) - pemp(t_left)
   , prob_norm = 2*(pnorm(t_right) - pnorm(t_left))
 ) %>% 
@@ -740,9 +707,9 @@ retsum = czret %>%
 plotme = retsum %>% select(signalname, insamp, between, muhat) %>% 
   pivot_longer(cols = c(between,muhat), names_to = 'group', values_to = 'y')
 
+
 ggplot(plotme, aes(color = "blue", x=insamp, y=y, group = group)) +
   geom_point(aes(color = group)) +
-  geom_smooth(method="auto") +
   theme_minimal(
     base_size = 15) +
   theme(
