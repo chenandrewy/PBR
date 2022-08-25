@@ -80,13 +80,8 @@ czret = cz_all %>%
 
 
 ## CZSUM ----
-czsum = cz_all %>% 
-  mutate(vint = 2022) %>% 
-  rbind(
-    cz_all %>% 
-      mutate(vint = 2021)
-  ) %>% 
-  select(vint, signalname, port, date, ret) %>% 
+czsum = cz_all %>%
+  select(signalname, port, date, ret) %>% 
   left_join(signaldoc %>% 
               select(signalname, SampleStartYear, SampleEndYear)
             , by = 'signalname'
@@ -244,7 +239,7 @@ ggsave(
 # Generate R2 Replication Figure ----
 ## Performance Measures ====
 target_data = czsum %>%
-  filter(vint == 2022 & insamp & port == 'LS') %>% 
+  filter(insamp & port == 'LS') %>% 
   mutate(yearm = year(date)*100 + month(date)) %>% 
   select(signalname, yearm, ret)
 
@@ -396,7 +391,7 @@ fit_all = target_data[
 ## bootstrap ====
 # residuals
 czbs = czsum %>% 
-  filter(vint == 2022, insamp, port == 'LS') %>% 
+  filter(insamp, port == 'LS') %>% 
   group_by(signalname) %>% 
   mutate(
     e = as.vector(scale(ret, center = T, scale = F))
@@ -491,7 +486,7 @@ print(xtable(tab_too_big_wide, type = "latex"), file = "../results/tab-too-big.t
 
 # use full sample for most overlap
 retmat = czsum %>% 
-  filter(vint == 2022, port == 'LS') %>% 
+  filter(port == 'LS') %>% 
   select(signalname, date, ret) %>% 
   pivot_wider(names_from = signalname, values_from = ret) %>%
   select(-date) %>% 
@@ -726,7 +721,7 @@ signaldoc_bias = signaldoc %>%
 
 # find mean returns by sample, merge and find muhat
 retsum = czret %>% 
-  mutate(samptype = recode(samptype, "in-samp" = "insamp")) %>%
+  mutate(samptype = recode(samptype, "in-samp" = "insamp", "post-pub" = "between")) %>%
   group_by(signalname, samptype) %>%  
   summarize(
     rbar = mean(ret)
@@ -745,25 +740,25 @@ retsum = czret %>%
 plotme = retsum %>% select(signalname, insamp, between, muhat) %>% 
   pivot_longer(cols = c(between,muhat), names_to = 'group', values_to = 'y')
 
-# ggplot(plotme, aes(color = "blue", x=insamp, y=y, group = group)) +
-#   geom_point(aes(color = group)) +
-#   geom_smooth(method="auto") +
-#   theme_minimal(
-#     base_size = 15) +
-#   theme(
-#     text = element_text(size=30, family="Palatino Linotype")
-#   ) +
-#   scale_color_manual(
-#     values = c('gray', 'blue'), name = "Sample Type"
-#   ) +
-#   labs(x = "In Sample Return", y = "Predicted Return")
-# 
-# 
-# ggsave(
-#   "../results/structural_figure.pdf",
-#   width = 12,
-#   height = 12,
-#   device = cairo_pdf
-# )
+ggplot(plotme, aes(color = "blue", x=insamp, y=y, group = group)) +
+  geom_point(aes(color = group)) +
+  geom_smooth(method="auto") +
+  theme_minimal(
+    base_size = 15) +
+  theme(
+    text = element_text(size=30, family="Palatino Linotype")
+  ) +
+  scale_color_manual(
+    values = c('gray', 'blue'), name = "Sample Type"
+  ) +
+  labs(x = "In Sample Return", y = "Predicted Return")
+
+
+ggsave(
+  "../results/structural_figure.pdf",
+  width = 12,
+  height = 8,
+  device = cairo_pdf
+)
 
 
