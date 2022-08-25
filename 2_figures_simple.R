@@ -410,7 +410,7 @@ bootsum = bootdat %>%
 
 ## Make Table ====
 # empirical cdf
-pemp = ecdf(t_insamp)
+pemp = ecdf(t_insamp$tstat)
 
 # add bootstrap cdf??
 
@@ -714,20 +714,28 @@ coefficients = summary(lm(y ~ insamp, data=coefficients))
 muhat_intercept = coefficients$coefficients['(Intercept)', 'Estimate']
 muhat_slope = coefficients$coefficients['insamp', 'Estimate']
 
-ggplot(plotme, aes(color = "blue", x=insamp, y=y, group = group)) +
-  geom_point(aes(color = group)) +
+
+# override aes code from https://aosmith.rbind.io/2020/07/09/ggplot2-override-aes/
+ggplot(plotme %>% filter(group == "between"), aes(x=insamp, y=y)) +
   theme_minimal(
     base_size = 15) +
   theme(
-    text = element_text(size=30, family="Palatino Linotype")
+    text = element_text(size=30, family="Palatino Linotype"),
+    legend.position = c(.2, .75),
   ) +
   geom_abline(
-    aes(slope = muhat_slope, intercept = muhat_intercept)
+    size = 1,
+    color = MATBLUE,
+    aes(alpha = "Fitted", slope = muhat_slope, intercept = muhat_intercept, color="Muhat")
   ) + 
-  scale_color_manual(
-    values = c('gray', MATBLUE), name = "Sample Type"
-  ) +
-  labs(x = "In Sample Return", y = "Predicted Return")
+  geom_point(color = MATRED, aes(alpha = "Between")) +
+  labs(x = "In Sample Return", y = "Predicted Return") +
+  scale_alpha_manual(name = NULL,
+                     values = c(1, 1),
+                     breaks = c("Between", "Fitted"),
+                     guide = guide_legend(override.aes = list(linetype = c(0, 1),
+                                                              shape = c(16, NA),
+                                                              color = c(MATRED, MATBLUE) ) ) )
 
 
 ggsave(
