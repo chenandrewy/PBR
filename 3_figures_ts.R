@@ -40,10 +40,11 @@ df_preds_m = readxl::read_xlsx('Data/PredictorData2021.xlsx', sheet = 'Monthly')
             , tms = lty - tbl
             , dfy = BAA - AAA
             , dfr = corpr - ltr
-            , infl
+            , infl = -1*infl
             # ik
             # cay
-  )
+  ) %>% 
+  mutate(tbl = -1*tbl)
 
             
 df_preds_q = readxl::read_xlsx('Data/PredictorData2021.xlsx', sheet = 'Quarterly') %>% 
@@ -56,16 +57,17 @@ df_preds_q = readxl::read_xlsx('Data/PredictorData2021.xlsx', sheet = 'Quarterly
             , bm = `b/m`
             , ntis
             #, eqis
-            , tbl
+            , tbl = -1*tbl
             , lty
             , ltr
             , tms = lty - tbl
             , dfy = BAA - AAA
             , dfr = corpr - ltr
-            , infl
-            , ik
+            , infl = -1*infl
+            , ik = -1*ik
             # cay
-  )
+  ) %>% 
+  mutate(tbl = -1*tbl)
 
 df_preds_a = readxl::read_xlsx('Data/PredictorData2021.xlsx', sheet = 'Annual') %>% 
   mutate_all(as.numeric) %>% 
@@ -76,17 +78,18 @@ df_preds_a = readxl::read_xlsx('Data/PredictorData2021.xlsx', sheet = 'Annual') 
             , svar
             , bm = `b/m`
             , ntis
-            , eqis
+            , eqis = -1*eqis
             , tbl
             , lty
             , ltr
             , tms = lty - tbl
             , dfy = BAA - AAA
             , dfr = corpr - ltr
-            , infl
-            , ik
+            , infl = -1*infl
+            , ik = -1*ik
             , cay
-  )
+  ) %>% 
+  mutate(tbl = -1*tbl)
 
 # Fact 1: OPs can be replicated -------------------------------------------
 
