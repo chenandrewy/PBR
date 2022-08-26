@@ -1,11 +1,9 @@
-# 2022 07 Alec Erb on behalf of Andrew Chen: Generate Simple Figures for PBR
-
 # SETUP ====
-
 rm(list = ls())
-source('functions.r')
 tic = Sys.time()
 dir.create('../results/')
+source('functions.r')
+
 
 ## Globals ====
 library(tidyverse)
@@ -19,42 +17,21 @@ library(latex2exp)
 library(Cairo)
 library(xtable) 
 
+set.seed(1057)
+
 # graph defaults
 MATBLUE = rgb(0,0.4470,0.7410)
 MATRED = rgb(0.8500, 0.3250, 0.0980)
 MATYELLOW = rgb(0.9290, 0.6940, 0.1250)
 
-groupdat = list(
-  group = c('null', 'fit')
-  , color = c(MATRED, MATBLUE, MATYELLOW)
-  , labels = c(
-    TeX('Null ($\\sigma_\\mu=0$)')
-    , TeX('Fit ($\\sigma_\\mu=3$)')
-  )
-  , linetype = c('dashed','solid')
-)
-
-theme_set(
-  theme_minimal() +
-    theme(
-      text = element_text(family = "Palatino Linotype.ttf")
-    )
-)
-
-
-
-
 # Import Data ====
 cz_all = fread("../data/PredictorPortsFull.csv")
 signaldoc = fread('../data/SignalDoc.csv')
 
-
-
-
 # Prepare Data ====
 signaldoc = signaldoc %>% rename(signalname = Acronym)
 
-## CZRET ----
+## CZRET ====
 signaldoc_dates = signaldoc %>% 
   mutate(
     pubdate = as.Date(paste0(Year, '-12-31'))
@@ -78,26 +55,29 @@ czret = cz_all %>%
   filter(!is.na(samptype))
 
 
-## CZSUM ----
+## CZSUM ====
 czsum = cz_all %>%
+  filter(port == 'LS', !is.na(ret)) %>%
   select(signalname, port, date, ret) %>% 
+  filter(!is.na(ret), port == 'LS') %>%
   left_join(signaldoc %>% 
               select(signalname, SampleStartYear, SampleEndYear)
             , by = 'signalname'
   ) %>% 
   mutate(
     insamp = (year(date) >= SampleStartYear) &  (year(date) <= SampleEndYear)
+  ) %>%
+  group_by(signalname) %>% 
+  summarize(
+    tstat = mean(ret)/sd(ret)*sqrt(dplyr::n())
   ) 
 
 
-
-
 # Generate McLean-Pontiff bootstrapped mean returns figure ====
-
 ## bootstrap mean distributions ====
-# clustered by month
 set.seed(6)
 nboot = 500
+
 bootfun = function(sampname){
   # make wide dataset, use NA if not correct sample
   wide_is = czret %>%
@@ -120,9 +100,7 @@ bootfun = function(sampname){
     tempt = sample(1:T, replace = T)
     rboot[i] = mat[tempt,]  %>% as.vector %>% mean(na.rm=T)
   }
-  
   return(rboot)
-  
 }
 
 # bootstrap for each sample type
@@ -165,7 +143,7 @@ bootdat %>%
     legend.title=element_text(size=40)
   ) + 
   scale_fill_manual(
-    values = c(groupdat$color[2], 'grey'), name = "Sample Type"
+    values = c(MATBLUE, 'grey'), name = "Sample Type"
   ) +
   labs(x='Pooled Mean Return (bps monthly)', y='Density') +
   geom_vline(xintercept = 0) +
@@ -180,21 +158,9 @@ ggsave(
 )
 
 
-
-
 # Generate R2 Replication Figure ----
 ## Performance Measures ====
-t_insamp = czsum %>% filter(port == "LS" & insamp) %>%
-  group_by(signalname) %>%
-  summarize(tstat = abs(mean(ret)/sd(ret)*sqrt(dplyr::n())))
-
-
-## Name Scatter cleaner ====
-ablines = tibble(slope = 1, 
-                 intercept = 0,
-                 group = factor(x = c('45 degree line'),
-                                levels = c('45 degree line')))
-
+t_insamp = czsum$tstat
 
 # select comparable t-stats
 fit_OP = signaldoc %>% 
@@ -211,7 +177,7 @@ fit_OP = signaldoc %>%
   ) 
 
 
-## Prepare signal doc ====
+## prepare signal doc ====
 catname = c('raw','factor or char adjusted','nonstandard lag')
 
 # select comparable t-stats
@@ -247,8 +213,12 @@ fit_OP = signaldoc %>%
   )
 
 
-## Raw vs OP plot ====
+## plot ====
 # merge 
+ablines = tibble(slope = 1, 
+                 intercept = 0,
+                 group = factor(x = c('45 degree line'),
+                                levels = c('45 degree line')))
 fitcomp = t_insamp %>% 
   rename(tstat_CZ = tstat) %>% 
   inner_join(
@@ -257,7 +227,7 @@ fitcomp = t_insamp %>%
   ) 
 
 # plot
-tempname = 'Original Method'
+legname = 'Original Method'
 fitcomp %>% 
   ggplot(aes(x=tstat_OP, y = tstat_CZ)) +
   geom_point(size=4, aes(shape =adjusted, fill = adjusted)) +
@@ -272,10 +242,10 @@ fitcomp %>%
     aes(slope = 1, intercept = 0)
   ) +
   scale_shape_manual(
-    values = c(21, 22, 23), name = tempname
+    values = c(21, 22, 23), name = legname
   ) +
   scale_fill_manual(
-    values = c(groupdat$color), name = tempname
+    values = c(MATRED, MATBLUE, MATYELLOW), name = legname
   ) +
   labs(x = 't-stat Original Paper (see legend)'
        , y = 't-stat Replicated (raw)')  +
@@ -291,8 +261,6 @@ ggsave(
 )
 
 
-
-
 # Generate t too big figure ====
 ## settings ====
 # for nboot = 1000, takes 20 seconds.  
@@ -303,8 +271,8 @@ tedge = c(seq(0,9, 1), 20)
 
 ## bootstrap ====
 # residuals
-czbs = czsum %>% 
-  filter(insamp, port == 'LS') %>% 
+czbs = czret %>% 
+  filter(samptype == 'in-samp', port == 'LS') %>% 
   group_by(signalname) %>% 
   mutate(
     e = as.vector(scale(ret, center = T, scale = F))
@@ -338,10 +306,8 @@ boot_once = function(){
   return(temp)
 }
 
-# bootstrap!!
+# bootstrap
 ndatemax = dim(czbs)[1]
-tic = Sys.time()
-set.seed(1057)
 bootdat = rbindlist(lapply(1:nboot, function(x) boot_once()))
 toc = Sys.time()
 toc - tic
@@ -362,7 +328,7 @@ pemp = ecdf(t_insamp$tstat)
 t_left  = tedge[1:(length(tedge)-1)]
 t_right = tedge[2:length(tedge)]
 
-# table
+# generate table
 tab_too_big = data.frame(
   t_left 
   , t_right
@@ -381,35 +347,29 @@ tab_too_big = data.frame(
   mutate(t_bound = paste(t_left, " - ", t_right), .before=t_left) %>%
   mutate(across(-t_bound, round, 6)) %>%
   as_tibble() %>%
-  mutate_all(as.character())
-
-
-tab_too_big_wide = tab_too_big %>% t()
+  mutate_all(as.character()) %>%
+  t()
 
 # make table with Stargazer and export to LaTeX
-stargazer(tab_too_big_wide, type = "latex", title = "Results", align=TRUE)
-print(xtable(tab_too_big_wide, type = "latex"), file = "../results/tab-too-big.tex")
-
-
+stargazer(tab_too_big, type = "latex", title = "Results", align=TRUE)
+print(xtable(tab_too_big, type = "latex"), file = "../results/tab-too-big.tex")
 
 
 # Correlation Figures ------------------------------------------------------
-
 # use full sample for most overlap
-retmat = czsum %>% 
+retmat = czret %>% 
   filter(port == 'LS') %>% 
   select(signalname, date, ret) %>% 
   pivot_wider(names_from = signalname, values_from = ret) %>%
   select(-date) %>% 
   as.matrix()
 
-
 ## correlation dist ====
 cormat = cor(retmat, use = 'pairwise.complete.obs')
 corlong = cormat[lower.tri(cormat)]
 
 ggplot(data.frame(cor = corlong), aes(x=cor)) +
-  geom_histogram(alpha = .8, fill=groupdat$color[2]) +
+  geom_histogram(alpha = .8, fill=MATBLUE) +
   theme_minimal(
     base_size = 15
   ) + 
@@ -450,7 +410,7 @@ ggplot(plotme, aes(color="blue", x=Num_PC, y = pct_explained)) + geom_line() +
     text = element_text(size=40, family = "Palatino Linotype")
   ) + 
   labs(x="Number of Principal Components", y="% Varaince Explained") +
-  scale_color_manual(values=groupdat$color[2]) +
+  scale_color_manual(values=MATBLUE) +
   theme(legend.position="none")
 
 ggsave(
@@ -463,12 +423,7 @@ ggsave(
 
 # Filling the Gap ====
 # find empirical t-stats
-t_emp = czret %>% filter(samptype == 'in-samp', port == 'LS') %>% 
-  group_by(signalname) %>% 
-  summarize(
-    tstat = mean(ret)/sd(ret)*sqrt(dplyr::n())
-  )  %>% 
-  pull(tstat)
+t_emp = czsum$tstat 
 
 
 ## make plotting data ----------------------------------------------------------------
@@ -502,7 +457,7 @@ dat_null =data.frame(
 
 # fit
 sigfit = sqrt(1+3^2)
-dat_fit =data.frame(
+dat_fit = data.frame(
   t_mid = mid2
   , prob = (pnorm(t_right2, sd = sigfit) - pnorm(t_left2, sd = sigfit))/
     (1-pnorm(2, sd = sigfit))*rescalefac*(1-F_emp(2))
@@ -527,7 +482,6 @@ groupdat = tibble(
   )
   , linetype = c('dashed','solid')
 )
-
 
 ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   geom_bar(stat='identity',position='identity',alpha=0.6, aes(fill = group)) +
@@ -556,8 +510,6 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   )  
 
 ggsave('../results/filling-the-gap.pdf', width = 12, height = 8, device = cairo_pdf)
-
-
 
 
 # Shrinkage Figure ----
@@ -600,18 +552,18 @@ ggplot(plotme %>% filter(group == "out-of-samp"), aes(x=`in-samp`, y=y)) +
   ) +
   geom_point(size = 4, color = MATRED, aes(alpha = "OOS")) +
   geom_abline(size = 2, color = MATBLUE, 
-              aes(alpha = "Fitted", slope = muhat_slope, intercept = 0, color="Muhat")
+              aes(alpha = "Bias adjusted \nin-samp", slope = muhat_slope, intercept = 0, color="Muhat")
   ) +
   scale_alpha_manual(name = NULL,
                        values = c(1, 1),
-                       breaks = c("OOS", "Fitted"),
+                       breaks = c("OOS", "Bias adjusted \nin-samp"),
                        guide = guide_legend(override.aes = list(linetype = c(0, 1),
                                                                 shape = c(16, NA),
                                                                 color = c(MATRED, MATBLUE) ) ) ) +
 
   labs(x="In Sample Returns", y="Out of Sample Returns") +
-  xlim(-.1, 3) + 
-  ylim(-.5, 3)
+  xlim(-1, 3) + 
+  ylim(-1, 3)
 
 ggsave(
   "../results/shrinkage_figure.pdf",
