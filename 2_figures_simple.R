@@ -483,7 +483,6 @@ t_left2 = edge2[1:(length(edge2)-1)]
 t_right2 = edge2[2:length(edge2)]
 mid2 = t_left2 + diff(edge2)/2
 
-
 # empirical
 F_emp = ecdf(t_emp)
 dat_emp = data.frame(
@@ -553,7 +552,7 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
     
   )  +
   coord_cartesian(
-    xlim = c(0,10), ylim = c(0,0.25)
+    xlim = c(0,10), ylim = c(0,0.8)
   )  
 
 ggsave('../results/filling-the-gap.pdf', width = 12, height = 8, device = cairo_pdf)
@@ -575,11 +574,7 @@ lambda <- uniroot(trunc_normal, interval = c(.5, 10), tol = .00001)
 shrink <- (1/(lambda$root**2))
 
 
-
-
-
 ## plot ----
-
 plotme = czret %>% 
   group_by(samptype, signalname) %>% 
   summarise(mean = mean(ret)) %>%
@@ -593,32 +588,7 @@ plotme = czret %>%
 # get regression coefficients for muhat data to draw abline
 coefficients = plotme[plotme$group == "muhat", c('in-samp', 'y')]
 coefficients = summary(lm(y ~ `in-samp`, data=coefficients))
-muhat_intercept = coefficients$coefficients['(Intercept)', 'Estimate']
 muhat_slope = coefficients$coefficients['`in-samp`', 'Estimate']
-
-
-# override aes code from https://aosmith.rbind.io/2020/07/09/ggplot2-override-aes/
-# ggplot(plotme %>% filter(group == "between"), aes(x=insamp, y=y)) +
-#   theme_minimal(
-#     base_size = 15) +
-#   theme(
-#     text = element_text(size=30, family="Palatino Linotype"),
-#     legend.position = c(.2, .75),
-#   ) +
-#   geom_abline(
-#     size = 1,
-#     color = MATBLUE,
-#     aes(alpha = "Fitted", slope = muhat_slope, intercept = muhat_intercept, color="Muhat")
-#   ) + 
-#   geom_point(color = MATRED, aes(alpha = "Between")) +
-#   labs(x = "In Sample Return", y = "Predicted Return") +
-#   scale_alpha_manual(name = NULL,
-#                      values = c(1, 1),
-#                      breaks = c("Between", "Fitted"),
-#                      guide = guide_legend(override.aes = list(linetype = c(0, 1),
-#                                                               shape = c(16, NA),
-#                                                               color = c(MATRED, MATBLUE) ) ) )
-# 
 
 ggplot(plotme %>% filter(group == "out-of-samp"), aes(x=`in-samp`, y=y)) +
   theme_minimal(
@@ -630,7 +600,7 @@ ggplot(plotme %>% filter(group == "out-of-samp"), aes(x=`in-samp`, y=y)) +
   ) +
   geom_point(size = 4, color = MATRED, aes(alpha = "OOS")) +
   geom_abline(size = 2, color = MATBLUE, 
-              aes(alpha = "Fitted", slope = muhat_slope, intercept = muhat_intercept, color="Muhat")
+              aes(alpha = "Fitted", slope = muhat_slope, intercept = 0, color="Muhat")
   ) +
   scale_alpha_manual(name = NULL,
                        values = c(1, 1),
