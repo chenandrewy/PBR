@@ -16,6 +16,7 @@ library(lubridate)
 library(latex2exp)
 library(Cairo)
 library(xtable) 
+library(haven)
 
 set.seed(1057)
 
@@ -107,7 +108,7 @@ czretmat = czret %>%
 # Generate McLean-Pontiff bootstrapped mean returns figure ====
 ## bootstrap mean distributions ====
 set.seed(6)
-nboot = 50
+nboot = 500
 
 bootfun = function(sampname){
   # make wide dataset, use NA if not correct sample
@@ -285,18 +286,36 @@ ggsave(
 )
 
 
-# Generate t too big figure ====
+
+
+# T Too Big Table ---------------------------------------------------------
+## import YZ ====
+temp = read_sas('../data-YZ/Yan_Zheng_RFS_Data.sas7bdat')
+
+yzsum = temp %>%
+  mutate(
+    signalname = paste(transformation, fsvariable, sep = '.')
+  ) %>%
+  transmute(
+    signalname, date = DATE, ret = 100*ddiff_ew
+  ) %>% 
+  filter(!is.na(ret)) %>% 
+  group_by(signalname) %>% 
+  summarize(
+    tstat = mean(ret)/sd(ret)*sqrt(dplyr::n()) %>% abs()
+  )
+
+
 ## settings ====
-# for nboot = 1000, takes 20 seconds.  
-# nboot = 10,000 takes 3 minutes.  This is about 20 million predictors
-nboot = 10*1000
-ndatemin = 240
-tedge = c(seq(0,9, 1), 20)
+t_left = c(seq(2,9,1), Inf)
+sig_pct = pnorm(-t_left)*200
+nboot = 10*200
 
 ## bootstrap ====
+ndatemin = 240
+
 # residuals
-czbs = czret %>% 
-  filter(samptype == 'in-samp', port == 'LS') %>% 
+czresid = czret %>% 
   group_by(signalname) %>% 
   mutate(
     e = as.vector(scale(ret, center = T, scale = F))
@@ -306,14 +325,11 @@ czbs = czret %>%
   select(-date) %>% 
   as.matrix()
 
-# bootstrap
-# fast binding based on https://stackoverflow.com/questions/19697700/how-to-speed-up-rbind
-boot = data.table()
 boot_once = function(){
-  dateselect = sample(1:dim(czbs)[1], ndatemax, replace = T)
+  dateselect = sample(1:dim(czresid)[1], ndatemax, replace = T)
   
   # draw returns, clustered by month
-  eboot = czbs[dateselect, ]
+  eboot = czresid[dateselect, ]
   
   # summarize each predictor
   ebar = apply(eboot, 2, mean, na.rm=T)
@@ -325,13 +341,18 @@ boot_once = function(){
   tstat2 = tstat[ndate > ndatemin]
   
   # summarize across predictors
-  hdat = hist(abs(tstat2), tedge, plot = F)
-  temp = data.table(t_left = tedge[1:(length(tedge)-1)], p = hdat$counts/length(tstat2))
+  F_emp = ecdf(abs(tstat2))
+  
+  temp = data.table(t_left, pval = 1-F_emp(t_left))
   return(temp)
 }
 
-# bootstrap
-ndatemax = dim(czbs)[1]
+
+# bootstrap!!
+ndatemax = dim(czresid)[1]
+## should this be: dim(czresid)[1]
+tic = Sys.time()
+set.seed(1057)
 bootdat = rbindlist(lapply(1:nboot, function(x) boot_once()))
 toc = Sys.time()
 toc - tic
@@ -340,43 +361,36 @@ toc - tic
 bootsum = bootdat %>% 
   group_by(t_left) %>% 
   summarize(
-    p = mean(p)
+    pval = mean(pval)
   )
 
+## make table ====
+Fcz = ecdf(abs(czsum$tstat))
+Fyz = ecdf(abs(yzsum$tstat))
+Ncz = length(czsum$tstat)
+Nyz = length(yzsum$tstat)
 
-## Make Table ====
-# empirical cdf
-pemp = ecdf(czsum$tstat)
+tab_long = data.frame(
+  t_left
+  , Count_cz = Ncz*(1-Fcz(t_left))
+  , Count_yz = Nyz*(1-Fyz(t_left))
+  , pct_cz = (1-Fcz(t_left))*100
+  , pct_yz = (1-Fyz(t_left))*100
+  , sig_pct
+  , sig_boot = bootsum$pval*100
+)
 
-# table settings
-t_left  = tedge[1:(length(tedge)-1)]
-t_right = tedge[2:length(tedge)]
+tab_wide = tab_long %>% t()
 
-# generate table
-tab_too_big = data.frame(
-  t_left 
-  , t_right
-  , N_emp = length(czsum$tstat)*(pemp(t_right) - pemp(t_left))
-  , prob_emp = pemp(t_right) - pemp(t_left)
-  , prob_norm = 2*(pnorm(t_right) - pnorm(t_left))
-) %>% 
-  left_join(
-    bootsum %>% rename(prob_boot = p)
-    , by = 't_left'
-  ) %>% 
-  mutate(
-    emp_to_norm = prob_emp / prob_norm
-    , N_hack_norm = N_emp/prob_norm
-  ) %>% 
-  mutate(t_bound = paste(t_left, " - ", t_right), .before=t_left) %>%
-  mutate(across(-t_bound, round, 6)) %>%
-  as_tibble() %>%
-  mutate_all(as.character()) %>%
-  t()
+stargazer(tab_wide, type = "latex", title = "Results", align=TRUE)
 
-# make table with Stargazer and export to LaTeX
-stargazer(tab_too_big, type = "latex", title = "Results", align=TRUE)
-print(xtable(tab_too_big, type = "latex"), file = "../results/tab-too-big.tex")
+
+
+
+
+
+
+
 
 
 # Correlation Figures ------------------------------------------------------
