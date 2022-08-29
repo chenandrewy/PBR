@@ -5,7 +5,7 @@ dir.create('../results/')
 source('functions.r')
 
 
-## Globals ====
+## globals ====
 library(tidyverse)
 library(data.table)
 library(googledrive)
@@ -19,16 +19,36 @@ library(xtable)
 
 set.seed(1057)
 
-# graph defaults
+## graph defaults ====
 MATBLUE = rgb(0,0.4470,0.7410)
 MATRED = rgb(0.8500, 0.3250, 0.0980)
 MATYELLOW = rgb(0.9290, 0.6940, 0.1250)
 
-# Import Data ====
+chen_theme = theme_minimal() +
+  theme(
+    text = element_text(family = "Palatino Linotype")
+    , panel.border = element_rect(colour = "black", fill=NA, size=1)    
+    
+    # Font sizes
+    , axis.title.x = element_text(size = 26),
+    axis.title.y = element_text(size = 26),
+    axis.text.x = element_text(size = 22),
+    axis.text.y = element_text(size = 22),
+    legend.text = element_text(size = 18),
+    
+    # Tweaking legend
+    legend.position = c(0.7, 0.8),
+    legend.text.align = 0,
+    legend.background = element_rect(fill = "white", color = "black"),
+    legend.margin = margin(t = 5, r = 20, b = 5, l = 5), 
+    legend.key.size = unit(1.5, "cm")
+    , legend.title = element_blank()    
+  ) 
+
+# Import/Prepare Data ====
 cz_all = fread("../data/PredictorPortsFull.csv")
 signaldoc = fread('../data/SignalDoc.csv')
 
-# Prepare Data ====
 signaldoc = signaldoc %>% rename(signalname = Acronym)
 
 ## CZRET ====
@@ -87,7 +107,7 @@ czretmat = czret %>%
 # Generate McLean-Pontiff bootstrapped mean returns figure ====
 ## bootstrap mean distributions ====
 set.seed(6)
-nboot = 500
+nboot = 50
 
 bootfun = function(sampname){
   # make wide dataset, use NA if not correct sample
@@ -146,15 +166,13 @@ bootdat %>%
                  , breaks = seq(0,125, 5)
                  , aes(y=..density..)
   ) +
-  theme_minimal(
-    base_size = 15,
-  ) + 
+  chen_theme + 
   theme(
-    text = element_text(size=40, family = "Palatino Linotype"),
-    legend.title=element_text(size=40)
+    legend.position = c(.25, .8)
   ) + 
   scale_fill_manual(
-    values = c(MATBLUE, 'grey'), name = "Sample Type"
+    labels=c('Original Sample', 'Years 1-3 Post Sample'),
+    values = c(MATBLUE, 'grey')
   ) +
   labs(x='Pooled Mean Return (bps monthly)', y='Density') +
   geom_vline(xintercept = 0) +
@@ -170,8 +188,8 @@ ggsave(
 
 
 # Generate R2 Replication Figure ----
-## Performance Measures ====
-t_insamp = czsum$tstat
+## performance measures ====
+# t_insamp = czsum$tstat
 
 # select comparable t-stats
 fit_OP = signaldoc %>% 
@@ -230,7 +248,8 @@ ablines = tibble(slope = 1,
                  intercept = 0,
                  group = factor(x = c('45 degree line'),
                                 levels = c('45 degree line')))
-fitcomp = t_insamp %>% 
+
+fitcomp = czsum %>% 
   rename(tstat_CZ = tstat) %>% 
   inner_join(
     fit_OP
@@ -242,13 +261,7 @@ legname = 'Original Method'
 fitcomp %>% 
   ggplot(aes(x=tstat_OP, y = tstat_CZ)) +
   geom_point(size=4, aes(shape =adjusted, fill = adjusted)) +
-  theme_minimal(
-    base_size = 15
-  ) +
-  theme(
-    legend.position = c(.8, .25),
-    text = element_text(size=30, family = "Palatino Linotype")
-  ) +
+  chen_theme +
   geom_abline(
     aes(slope = 1, intercept = 0)
   ) +
@@ -333,7 +346,7 @@ bootsum = bootdat %>%
 
 ## Make Table ====
 # empirical cdf
-pemp = ecdf(t_insamp$tstat)
+pemp = ecdf(czsum$tstat)
 
 # table settings
 t_left  = tedge[1:(length(tedge)-1)]
@@ -343,7 +356,7 @@ t_right = tedge[2:length(tedge)]
 tab_too_big = data.frame(
   t_left 
   , t_right
-  , N_emp = length(t_insamp$tstat)*(pemp(t_right) - pemp(t_left))
+  , N_emp = length(czsum$tstat)*(pemp(t_right) - pemp(t_left))
   , prob_emp = pemp(t_right) - pemp(t_left)
   , prob_norm = 2*(pnorm(t_right) - pnorm(t_left))
 ) %>% 
@@ -367,19 +380,13 @@ print(xtable(tab_too_big, type = "latex"), file = "../results/tab-too-big.tex")
 
 
 # Correlation Figures ------------------------------------------------------
-
 ## correlation dist ====
 cormat = cor(czretmat, use = 'pairwise.complete.obs')
 corlong = cormat[lower.tri(cormat)]
 
 ggplot(data.frame(cor = corlong), aes(x=cor)) +
   geom_histogram(alpha = .8, fill=MATBLUE) +
-  theme_minimal(
-    base_size = 15
-  ) + 
-  theme(
-    text = element_text(size=40, family = "Palatino Linotype")
-  ) + 
+  chen_theme + 
   labs(x = 'Pairwise Correlations'
        ,y = 'Count')
 
@@ -406,13 +413,14 @@ ggplot(plotme, aes(color="blue", x=Num_PC, y = pct_explained)) + geom_line() +
   coord_cartesian(
     xlim = c(0,80)
   ) + 
-  geom_line(size = 1.0) + 
-  theme_minimal(
-    base_size = 15
-  ) + 
-  theme(
-    text = element_text(size=40, family = "Palatino Linotype")
-  ) + 
+  chen_theme +
+  geom_line(size = 1.0) +
+  # theme_minimal(
+  #   base_size = 15
+  # ) + 
+  # theme(
+  #   text = element_text(size=40, family = "Palatino Linotype")
+  # ) + 
   labs(x="Number of Principal Components", y="% Varaince Explained") +
   scale_color_manual(values=MATBLUE) +
   theme(legend.position="none") +
@@ -428,7 +436,6 @@ ggsave(
 
 # Filling the Gap ====
 # find empirical t-stats
-t_emp = czsum$tstat 
 
 
 ## make plotting data ----------------------------------------------------------------
@@ -444,7 +451,7 @@ t_right2 = edge2[2:length(edge2)]
 mid2 = t_left2 + diff(edge2)/2
 
 # empirical
-F_emp = ecdf(t_emp)
+F_emp = ecdf(czsum$tstat)
 dat_emp = data.frame(
   t_mid = mid
   , prob = (F_emp(t_right) - F_emp(t_left))
@@ -492,35 +499,35 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   geom_bar(stat='identity',position='identity',alpha=0.6, aes(fill = group)) +
   scale_fill_manual(
     values = 'gray', labels = 'Published', name = NULL
-  ) +    
-  geom_line(
-    data = dat_all %>% filter(group != 'emp'), aes(color = group, linetype = group)
   ) +
-  xlab('t-statistic') +
-  ylab('Frequency') +
+  
   scale_color_manual(
     values = groupdat$color, labels = groupdat$labels, name = NULL
-  ) + 
+  ) +
+  
   scale_linetype_manual(
     values = groupdat$linetype, labels = groupdat$labels, name = NULL
   ) +
+  
+  geom_line(
+    data = dat_all %>% filter(group != 'emp'), aes(color = group, linetype = group)
+  ) +
+  chen_theme +
   theme(
-    legend.position = c(75,75)/100
-    , legend.margin = margin(t = -15, r = 20, b = 0, l = 5)
-    , text = element_text(family = "Palatino Linotype")
-    
+    legend.position = c(75,50)/100
+    # , legend.margin = margin(t = -15, r = 20, b = 0, l = 5)
   )  +
+  xlab('t-statistic') +
+  ylab('Frequency') +
   coord_cartesian(
-    xlim = c(0,10), ylim = c(0,0.8)
+    xlim = c(0,10), ylim = c(0,0.9)
   )  
 
 ggsave('../results/filling-the-gap.pdf', width = 12, height = 8, device = cairo_pdf)
 
 
 # Shrinkage Figure ----
-
-
-## Prep Data (Mostly Bootstrap) ---------------------------------------------------------------
+## prep data (Mostly Bootstrap) ---------------------------------------------------------------
 
 t_cut = -Inf
 
@@ -558,11 +565,11 @@ toc - tic
 dat_mean_t = bootdat %>% mutate(group = 'boot') %>% 
   rbind(
     data.table(
-      mean_t_trunc = mean(t_emp[t_emp > t_cut]), group = 'emp'
+      mean_t_trunc = mean(czsum$tstat[czsum$tstat > t_cut]), group = 'emp'
     )
   )
 
-## Estimate ----------------------------------------------------------
+## estimate ----------------------------------------------------------
 tic = Sys.time()
 
 
@@ -609,15 +616,12 @@ coefficients = summary(lm(y ~ `in-samp`, data=coefficients))
 muhat_slope = coefficients$coefficients['`in-samp`', 'Estimate']
 
 ggplot(plotme %>% filter(group == "out-of-samp"), aes(x=`in-samp`, y=y)) +
-  theme_minimal(
-    base_size = 15
-  ) +
+  chen_theme +
   theme(
-    text = element_text(size=40, family="Palatino Linotype"),
-    legend.position = c(.8, .25),
+    legend.position = c(.7, .3)
   ) +
-  geom_point(size = 4, color = 'gray', aes(alpha = "OOS")) +
-  geom_abline(size = 2, color = MATBLUE, 
+  geom_point(size = 2, color = 'gray', aes(alpha = "OOS")) +
+  geom_abline(size = 1, color = MATBLUE,
               aes(alpha = "Bias adjusted \nin-samp", slope = muhat_slope, intercept = 0, color="Muhat")
   ) +
   scale_alpha_manual(name = NULL,
