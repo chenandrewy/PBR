@@ -4,7 +4,7 @@
 # Do stuff -------------------------------------------------------------------------
 library(tidyverse)
 
-N = 1e4
+N = 2e4
 
 p0 = 0.444
 lambda = 55.5
@@ -36,3 +36,30 @@ dat %>%
     , mean(1-mu/rbar)
   )
 
+
+
+
+# jkp stuff ---------------------------------------------------------------
+
+sigsq = 1000^2/12
+
+T = 420
+
+tausq = 43^2
+
+kappa = 1/(1+sigsq/(T*tausq))
+
+kappa
+
+(sigsq/T)^0.5
+
+
+# with pub bias
+
+tauc_alt = 29
+tauw = 21
+
+vtheta = ((tauc_alt^2 + tauw^2)/14^2)^0.5
+
+
+1/(vtheta^2 + 1)
