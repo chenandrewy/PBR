@@ -51,8 +51,7 @@ czret = cz_all %>%
       , (date > pubdate) ~ 'post-pub'
       , TRUE ~ NA_character_
     )
-  ) %>% 
-  filter(!is.na(samptype))
+  )
 
 
 ## CZSUM ====
@@ -71,6 +70,18 @@ czsum = cz_all %>%
   summarize(
     tstat = mean(ret)/sd(ret)*sqrt(dplyr::n())
   ) 
+
+## CZRETMAT ====
+# used in correlations and one of the bootstraps
+
+# use full sample for most overlap
+czretmat = czret %>% 
+  filter(port == 'LS') %>% 
+  select(signalname, date, ret) %>% 
+  pivot_wider(names_from = signalname, values_from = ret) %>%
+  select(-date) %>% 
+  as.matrix()
+
 
 
 # Generate McLean-Pontiff bootstrapped mean returns figure ====
@@ -356,16 +367,9 @@ print(xtable(tab_too_big, type = "latex"), file = "../results/tab-too-big.tex")
 
 
 # Correlation Figures ------------------------------------------------------
-# use full sample for most overlap
-retmat = czret %>% 
-  filter(port == 'LS') %>% 
-  select(signalname, date, ret) %>% 
-  pivot_wider(names_from = signalname, values_from = ret) %>%
-  select(-date) %>% 
-  as.matrix()
 
 ## correlation dist ====
-cormat = cor(retmat, use = 'pairwise.complete.obs')
+cormat = cor(czretmat, use = 'pairwise.complete.obs')
 corlong = cormat[lower.tri(cormat)]
 
 ggplot(data.frame(cor = corlong), aes(x=cor)) +
@@ -411,7 +415,8 @@ ggplot(plotme, aes(color="blue", x=Num_PC, y = pct_explained)) + geom_line() +
   ) + 
   labs(x="Number of Principal Components", y="% Varaince Explained") +
   scale_color_manual(values=MATBLUE) +
-  theme(legend.position="none")
+  theme(legend.position="none") +
+  scale_y_continuous(breaks = seq(0, 100, 20))
 
 ggsave(
   "../results/PCA.pdf",
@@ -514,16 +519,77 @@ ggsave('../results/filling-the-gap.pdf', width = 12, height = 8, device = cairo_
 
 # Shrinkage Figure ----
 
-## point estimate ----------------------------------------------------------
+
+## Prep Data (Mostly Bootstrap) ---------------------------------------------------------------
+
+t_cut = -Inf
+
+nboot = 100
+ndatemin = 15*12
+
+boot_once = function(){
+  dateselect = sample(1:dim(czretmat)[1], ndatemax, replace = T)
+  
+  # draw returns, clustered by month
+  rboot = czretmat[dateselect, ]
+  
+  # summarize each predictor
+  rbar = apply(rboot, 2, mean, na.rm=T)
+  vol  = apply(rboot, 2, sd, na.rm=T)
+  ndate  = apply(rboot, 2, function(x) sum(!is.na(x)))
+  tstat = rbar/vol*sqrt(ndate)
+  
+  # remove if not enough observations
+  tstat2 = tstat[ndate > ndatemin]
+  
+  dat = data.table(mean_t_trunc = mean(tstat2[tstat2 > t_cut]))
+  return(dat)
+}
+
+# bootstrap!!
+ndatemax = dim(czretmat)[1]
 tic = Sys.time()
-t_sample_mean = mean(t_emp[t_emp > 1.96])
+set.seed(1057)
+bootdat = rbindlist(lapply(1:nboot, function(x) boot_once()))
+toc = Sys.time()
+toc - tic
 
-# build and solve truncated normal dist. for Lambda (x) [see Wikipedia - Truncated Nomrla]
-trunc_normal <- function(x) ((dnorm(2/x, mean = 0, sd = 1)) / (1-pnorm(2/x, mean =0, sd = 1))) * x - t_sample_mean
-lambda <- uniroot(trunc_normal, interval = c(.5, 10), tol = .00001)
+# compile
+dat_mean_t = bootdat %>% mutate(group = 'boot') %>% 
+  rbind(
+    data.table(
+      mean_t_trunc = mean(t_emp[t_emp > t_cut]), group = 'emp'
+    )
+  )
 
-# shrinkage formula (RAPS)
-shrink <- (1/(lambda$root**2))
+## Estimate ----------------------------------------------------------
+tic = Sys.time()
+
+
+for (i in 1:(nboot+1)){
+  
+  mean_t_curr = dat_mean_t$mean_t_trunc[i]
+
+  # build and solve truncated normal dist. for Lambda (x) [see Wikipedia - Truncated Nomrla]
+  trunc_normal <- function(x) 
+    ((dnorm(2/x, mean = 0, sd = 1)) / (1-pnorm(2/x, mean =0, sd = 1))) * x - mean_t_curr
+  lambda <- uniroot(trunc_normal, interval = c(.5, 10), tol = .00001)
+  
+  # shrinkage formula (RAPS)
+  shrink <- (1/(lambda$root**2))
+  
+  # store
+  dat_mean_t$shrink[i] = shrink
+
+} # end for i in 1:nboot
+
+dat_mean_t
+
+# find point estimate and standard errors
+estsum = list(
+  point = dat_mean_t %>% filter(group == 'emp') %>% pull(shrink)
+  , se  = dat_mean_t %>% filter(group == 'boot') %>% summarize(se = sd(shrink)) %>% pull(se)
+)
 
 
 ## plot ----
@@ -550,7 +616,7 @@ ggplot(plotme %>% filter(group == "out-of-samp"), aes(x=`in-samp`, y=y)) +
     text = element_text(size=40, family="Palatino Linotype"),
     legend.position = c(.8, .25),
   ) +
-  geom_point(size = 4, color = MATRED, aes(alpha = "OOS")) +
+  geom_point(size = 4, color = 'gray', aes(alpha = "OOS")) +
   geom_abline(size = 2, color = MATBLUE, 
               aes(alpha = "Bias adjusted \nin-samp", slope = muhat_slope, intercept = 0, color="Muhat")
   ) +
@@ -559,11 +625,11 @@ ggplot(plotme %>% filter(group == "out-of-samp"), aes(x=`in-samp`, y=y)) +
                        breaks = c("OOS", "Bias adjusted \nin-samp"),
                        guide = guide_legend(override.aes = list(linetype = c(0, 1),
                                                                 shape = c(16, NA),
-                                                                color = c(MATRED, MATBLUE) ) ) ) +
+                                                                color = c('gray', MATBLUE) ) ) ) +
 
   labs(x="In Sample Returns", y="Out of Sample Returns") +
   xlim(-1, 3) + 
-  ylim(-1, 3)
+  ylim(-2, 3)
 
 ggsave(
   "../results/shrinkage_figure.pdf",

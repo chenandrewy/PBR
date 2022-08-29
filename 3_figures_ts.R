@@ -5,7 +5,8 @@
 
 library(tidyverse)
 
-pathExhibits = '../../Apps/Overleaf/Publication Bias in Asset Pricing/exhibits/'
+pathExhibits = '../../Apps/Overleaf/Publication Bias in Asset Pricing/exhibits/' # for Tom
+pathExhibits = '../results/' # for general purpose use
 
 # Load data ---------------------------------------------------------------
 
