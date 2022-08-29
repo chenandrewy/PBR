@@ -32,6 +32,7 @@ df_preds_m = readxl::read_xlsx('Data/PredictorData2021.xlsx', sheet = 'Monthly')
             , ep = log(E12) - log(Index)
             , de = log(D12) - log(E12)
             , svar
+            , csp
             , bm = `b/m`
             , ntis
              #, eqis
@@ -55,6 +56,7 @@ df_preds_q = readxl::read_xlsx('Data/PredictorData2021.xlsx', sheet = 'Quarterly
             , ep = log(E12) - log(Index)
             , de = log(D12) - log(E12)
             , svar
+            , csp 
             , bm = `b/m`
             , ntis
             #, eqis
@@ -77,6 +79,7 @@ df_preds_a = readxl::read_xlsx('Data/PredictorData2021.xlsx', sheet = 'Annual') 
             , ep = log(E12) - log(Index)
             , de = log(D12) - log(E12)
             , svar
+            , csp
             , bm = `b/m`
             , ntis
             , eqis = -1*eqis
