@@ -108,7 +108,7 @@ czretmat = czret %>%
 # Generate McLean-Pontiff bootstrapped mean returns figure ====
 ## bootstrap mean distributions ====
 set.seed(6)
-nboot = 500
+nboot = 500 
 
 bootfun = function(sampname){
   # make wide dataset, use NA if not correct sample
@@ -190,7 +190,6 @@ ggsave(
 
 # Generate R2 Replication Figure ------------------------------------------
 ## performance measures ====
-# t_insamp = czsum$tstat
 
 # select comparable t-stats
 fit_OP = signaldoc %>% 
@@ -448,8 +447,8 @@ ggsave(
 )
 
 
-# Filling the Gap ====
-## make plotting data ----------------------------------------------------------------
+# Filling the Gap ----------------------------------------------------------------
+## make plotting data ----
 # set up 
 edge = seq(0,20,0.5)
 t_left = edge[1:(length(edge)-1)]
@@ -610,6 +609,8 @@ estsum = list(
 )
 
 
+
+
 ## plot ----
 plotme = czret %>% 
   group_by(samptype, signalname) %>% 
@@ -632,9 +633,11 @@ ggplot(plotme %>% filter(group == "out-of-samp"), aes(x=`in-samp`, y=y)) +
     legend.position = c(.7, .3)
   ) +
   geom_point(size = 2, color = 'gray', aes(alpha = "OOS")) +
-  geom_abline(size = 1, color = MATBLUE,
+  geom_abline(size = .8, color = MATBLUE,
               aes(alpha = "Bias adjusted \nin-samp", slope = muhat_slope, intercept = 0, color="Muhat")
   ) +
+  geom_abline(size = .2, coor = MATBLUE, aes(slope = muhat_slope, intercept = 2*estsum$se)) + 
+  geom_abline(size = .2, coor = MATBLUE, aes(slope = muhat_slope, intercept = -2*estsum$se)) + 
   scale_alpha_manual(name = NULL,
                        values = c(1, 1),
                        breaks = c("OOS", "Bias adjusted \nin-samp"),
