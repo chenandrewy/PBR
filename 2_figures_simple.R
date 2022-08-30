@@ -188,7 +188,7 @@ ggsave(
 )
 
 
-# Generate R2 Replication Figure ----
+# Generate R2 Replication Figure ------------------------------------------
 ## performance measures ====
 # t_insamp = czsum$tstat
 
@@ -752,5 +752,5 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   xlab('t-statistic') +
   ylab('Frequency') +
   coord_cartesian(
-    xlim = c(0,8), ylim = c(0,0.2)
+    xlim = c(-10,8), ylim = c(0,0.2)
   )  
