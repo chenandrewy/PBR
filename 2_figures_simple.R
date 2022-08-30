@@ -632,18 +632,10 @@ ggplot(plotme %>% filter(group == "out-of-samp"), aes(x=`in-samp`, y=y)) +
   theme(
     legend.position = c(.7, .3)
   ) +
-  geom_point(size = 2, color = 'gray', aes(alpha = "OOS")) +
-  geom_abline(size = .8, color = MATBLUE,
-              aes(alpha = "Bias adjusted \nin-samp", slope = muhat_slope, intercept = 0, color="Muhat")
-  ) +
-  geom_abline(size = .2, coor = MATBLUE, aes(slope = muhat_slope, intercept = 2*estsum$se)) + 
-  geom_abline(size = .2, coor = MATBLUE, aes(slope = muhat_slope, intercept = -2*estsum$se)) + 
-  scale_alpha_manual(name = NULL,
-                       values = c(1, 1),
-                       breaks = c("OOS", "Bias adjusted \nin-samp"),
-                       guide = guide_legend(override.aes = list(linetype = c(0, 1),
-                                                                shape = c(16, NA),
-                                                                color = c('gray', MATBLUE) ) ) ) +
+  geom_point(size = 2, color = 'gray', aes()) +
+  geom_abline(size = 1, color = MATBLUE, aes(slope = 1-shrink, intercept = 0)) +
+  geom_abline(size = .2, color = MATBLUE, aes(slope = 1-shrink + 2*estsum$se, intercept = 0)) +
+  geom_abline(size = .2, color = MATBLUE, aes(slope = 1-shrink - 2*estsum$se, intercept = 0)) + 
 
   labs(x="In Sample Returns", y="Out of Sample Returns") +
   xlim(-1, 3) + 
