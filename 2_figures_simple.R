@@ -70,27 +70,35 @@ czret = cz_all %>%
       (date >= sampstart) & (date <= sampend) ~ 'in-samp'
       , (date > sampend) & (date <= sampend %m+% months(36)) ~ 'out-of-samp'
       , (date > pubdate) ~ 'post-pub'
-      , TRUE ~ NA_character_
+      , TRUE ~ 'NA_character_'
     )
   )
 
 
 ## CZSUM ====
-czsum = cz_all %>%
-  filter(port == 'LS', !is.na(ret)) %>%
-  select(signalname, port, date, ret) %>% 
-  filter(!is.na(ret), port == 'LS') %>%
-  left_join(signaldoc %>% 
-              select(signalname, SampleStartYear, SampleEndYear)
-            , by = 'signalname'
-  ) %>% 
-  mutate(
-    insamp = (year(date) >= SampleStartYear) &  (year(date) <= SampleEndYear)
-  ) %>%
-  group_by(signalname) %>% 
+# czsum = cz_all %>%
+#   filter(port == 'LS', !is.na(ret)) %>%
+#   select(signalname, port, date, ret) %>%
+#   filter(!is.na(ret), port == 'LS') %>%
+#   left_join(signaldoc %>%
+#               select(signalname, SampleStartYear, SampleEndYear)
+#             , by = 'signalname'
+#   ) %>%
+#   mutate(
+#     insamp = (year(date) >= SampleStartYear) &  (year(date) <= SampleEndYear)
+#   ) %>%
+#   group_by(signalname) %>%
+#   summarize(
+#     tstat = mean(ret)/sd(ret)*sqrt(dplyr::n())
+#   )
+czsum = czret %>%
+  group_by(signalname, samptype) %>%
   summarize(
-    tstat = mean(ret)/sd(ret)*sqrt(dplyr::n())
-  ) 
+    rbar = mean(ret)
+    , vol = sd(ret)
+    , tstat = mean(ret)/sd(ret)*sqrt(dplyr::n())
+  )
+
 
 ## CZRETMAT ====
 # used in correlations and one of the bootstraps
@@ -139,11 +147,10 @@ bootfun = function(sampname){
 rboot1 = bootfun('in-samp')
 rboot2 = bootfun('out-of-samp')
 
-mean_insamp = czret %>% filter(samptype == 'in-samp') %>% 
-  summarize(meanret = mean(ret)) %>% pull(meanret)
+mean_insamp = mean(czsum$rbar[czsum$samptype == "in-samp"])
 
-mean_oos = czret %>% filter(samptype == 'out-of-samp') %>% 
-  summarize(meanret = mean(ret)) %>% pull(meanret)
+mean_oos = mean(czsum$rbar[czsum$samptype == "out-of-samp"])
+
 
 # compile and plot
 bootdat = data.frame(
@@ -251,6 +258,7 @@ ablines = tibble(slope = 1,
 
 fitcomp = czsum %>% 
   rename(tstat_CZ = tstat) %>% 
+  filter(samptype == "in-samp") %>%
   inner_join(
     fit_OP
     , by = 'signalname'
@@ -364,9 +372,9 @@ bootsum = bootdat %>%
   )
 
 ## make table ====
-Fcz = ecdf(abs(czsum$tstat))
+Fcz = ecdf(abs(czsum$tstat[czsum$samptype == "in-samp"]))
 Fyz = ecdf(abs(yzsum$tstat))
-Ncz = length(czsum$tstat)
+Ncz = length(czsum$tstat[czsum$samptype == "in-samp"])
 Nyz = length(yzsum$tstat)
 
 tab_long = data.frame(
@@ -461,7 +469,7 @@ t_right2 = edge2[2:length(edge2)]
 mid2 = t_left2 + diff(edge2)/2
 
 # empirical
-F_emp = ecdf(czsum$tstat)
+F_emp = ecdf(czsum$tstat[czsum$samptype == "in-samp"])
 dat_emp = data.frame(
   t_mid = mid
   , prob = (F_emp(t_right) - F_emp(t_left))
@@ -575,7 +583,7 @@ toc - tic
 dat_mean_t = bootdat %>% mutate(group = 'boot') %>% 
   rbind(
     data.table(
-      mean_t_trunc = mean(czsum$tstat[czsum$tstat > t_cut]), group = 'emp'
+      mean_t_trunc = mean(czsum$tstat[czsum$tstat > t_cut & czsum$samptype == "in-samp"]), group = 'emp'
     )
   )
 
@@ -622,24 +630,49 @@ plotme = czret %>%
   select(signalname, `out-of-samp`, `in-samp`, muhat) %>%
   pivot_longer(cols = c(`out-of-samp`, muhat), names_to = 'group', values_to = 'y')
 
-# get regression coefficients for muhat data to draw abline
-coefficients = plotme[plotme$group == "muhat", c('in-samp', 'y')]
-coefficients = summary(lm(y ~ `in-samp`, data=coefficients))
-muhat_slope = coefficients$coefficients['`in-samp`', 'Estimate']
-
-ggplot(plotme %>% filter(group == "out-of-samp"), aes(x=`in-samp`, y=y)) +
+ggplot(plotme %>% filter(group == "out-of-samp"), aes(x=`in-samp`)) +
   chen_theme +
+  geom_point(size = 2, aes(y=y, color = "Years 1-3 Post Sample")) +
+  geom_abline(size = 1, aes(slope = 1-shrink, intercept = 0, color = "Shrinkage Est.")) + 
+  geom_abline(size = .5, color = MATBLUE, aes(slope = 1-shrink + 2*estsum$se, intercept = 0, color="2 SE C.I.")) +
+  geom_abline(size = .5, color= MATBLUE, aes(slope = 1-shrink - 2*estsum$se, intercept = 0), color="lb") +
+  labs(x="In Sample Returns", y="Out of Sample Returns") +
+  scale_color_manual(values = c("Years 1-3 Post Sample" = 'grey', "Shrinkage Est." = MATBLUE, "2 SE C.I." = MATBLUE )) +
   theme(
     legend.position = c(.7, .3)
   ) +
-  geom_point(size = 2, color = 'gray', aes()) +
-  geom_abline(size = 1, color = MATBLUE, aes(slope = 1-shrink, intercept = 0)) +
-  geom_abline(size = .2, color = MATBLUE, aes(slope = 1-shrink + 2*estsum$se, intercept = 0)) +
-  geom_abline(size = .2, color = MATBLUE, aes(slope = 1-shrink - 2*estsum$se, intercept = 0)) + 
-
-  labs(x="In Sample Returns", y="Out of Sample Returns") +
   xlim(-1, 3) + 
   ylim(-2, 3)
+
+plotme = rename(plotme, insamp = `in-samp`)
+
+ggplot(data = plotme %>% filter(group == "out-of-samp")) + 
+  geom_point(aes(x = insamp, y = y, colour = "black"),
+           stat = "Identity", fill = NA) +
+  geom_abline(aes(slope = 1-shrink, intercept = 0,linetype = "red"), colour = "red", size = 1) +
+  geom_abline(aes(slope = 1-shrink + .2, intercept = 0,linetype = "blue"), colour = "blue", size = 1) +
+  
+  scale_linetype_manual(labels = "data2", values = "solid") +
+  scale_colour_manual(name = "Parameter\n", labels = "data1", values = "black") +
+  guides(colour = guide_legend(override.aes = list(colour = "black", size = 1),
+                               order = 1),
+         linetype = guide_legend(title = NULL, override.aes = list(linetype = "solid",
+                                                                  colour = "red",
+                                                                  size = 1),
+                                                                  order = 3)) +
+  theme_minimal() +
+  theme(legend.key = element_rect(fill = "white", colour = NA),
+        legend.spacing = unit(0, "lines"))
+
+
+
+
+
+
+
+
+
+
 
 ggsave(
   "../results/shrinkage_figure.pdf",
