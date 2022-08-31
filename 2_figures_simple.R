@@ -660,6 +660,9 @@ ggsave(
 ## import YZ ====
 temp = read_sas('../data-YZ/Yan_Zheng_RFS_Data.sas7bdat')
 
+
+## import YZ ====
+
 yzsum = temp %>%
   mutate(
     signalname = paste(transformation, fsvariable, sep = '.')
@@ -673,6 +676,11 @@ yzsum = temp %>%
     tstat = mean(ret)/sd(ret)*sqrt(dplyr::n()) %>% abs()
   ) %>%
   mutate(tstat = abs(tstat))
+
+
+
+## import YZ ====
+
 
 # set up 
 edge = seq(0,20,0.5)
@@ -697,10 +705,9 @@ dat_emp = data.frame(
 rescalefac = mean(diff(edge))/mean(diff(edge2))
 dat_null =data.frame(
   t_mid = mid2
-  , prob = (pnorm(t_right2) - pnorm(t_left2))/(1-pnorm(2))*rescalefac*(1-F_emp(2))
+  , prob = (pnorm(t_right2) - pnorm(t_left2))*rescalefac*(1-F_emp(0))
   , group = 'null'
-) %>% 
-  mutate(prob = if_else(t_mid > 2, prob, 0))
+) 
 
 # fit
 sigfit = sqrt(1+3^2)
