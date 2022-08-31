@@ -23,7 +23,7 @@ dat = data.table(
   Z = rnorm(n), theta = theta_hlz
 ) %>% 
   mutate(
-    t = theta + Z, v = theta > 0
+    t = theta + Z, v = theta > 0, tabs = abs(t)
   )
 
 # fit
@@ -35,7 +35,15 @@ datsum = dat %>% mutate(tgroup = ntile(t,100)) %>%
 
 
 
-Var_t = var(dat$t)
+
+dat %>% 
+  filter(tabs>2) %>% 
+  summarize(
+    mean(tabs)
+    , mean(theta)
+    , mean(theta <= 0)    
+    , mean(theta) / mean(tabs)
+  )
 
 dat %>% 
   filter(t>2) %>% 
@@ -43,12 +51,11 @@ dat %>%
     mean(t)
     , mean(theta)
     , mean(theta <= 0)    
-    , mean(theta <= 1)
-    , mean(theta)
-    , mean(theta/t)
+    , mean(theta) / mean(tabs)
   )
 
-lm(theta ~ t, dat) %>% summary()
+
+# lm(theta ~ t, dat) %>% summary()
 
 
 set.seed(456)
@@ -56,12 +63,13 @@ set.seed(456)
 
 ggplot(
   dat[1:2000,]
-  , aes(x=t,y=theta)) +
+  , aes(x=tabs,y=theta)) +
   geom_point(aes(group = v, color = v)) +
   geom_vline(xintercept = 2) +
   geom_line(
     data = datsum, aes(x=Et, y=Etheta)
   ) +
+  geom_abline(slope = 1) +
   coord_cartesian(
     xlim = c(0,10), ylim = c(-5,12)
   )
