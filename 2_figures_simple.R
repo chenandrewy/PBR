@@ -76,21 +76,6 @@ czret = cz_all %>%
 
 
 ## CZSUM ====
-# czsum = cz_all %>%
-#   filter(port == 'LS', !is.na(ret)) %>%
-#   select(signalname, port, date, ret) %>%
-#   filter(!is.na(ret), port == 'LS') %>%
-#   left_join(signaldoc %>%
-#               select(signalname, SampleStartYear, SampleEndYear)
-#             , by = 'signalname'
-#   ) %>%
-#   mutate(
-#     insamp = (year(date) >= SampleStartYear) &  (year(date) <= SampleEndYear)
-#   ) %>%
-#   group_by(signalname) %>%
-#   summarize(
-#     tstat = mean(ret)/sd(ret)*sqrt(dplyr::n())
-#   )
 czsum = czret %>%
   group_by(signalname, samptype) %>%
   summarize(
@@ -102,7 +87,6 @@ czsum = czret %>%
 
 ## CZRETMAT ====
 # used in correlations and one of the bootstraps
-
 # use full sample for most overlap
 czretmat = czret %>% 
   filter(port == 'LS') %>% 
@@ -270,6 +254,9 @@ fitcomp %>%
   ggplot(aes(x=tstat_OP, y = tstat_CZ)) +
   geom_point(size=4, aes(shape =adjusted, fill = adjusted)) +
   chen_theme +
+  theme(
+    legend.position = c(.75, .25)
+  ) + 
   geom_abline(
     aes(slope = 1, intercept = 0)
   ) +
@@ -283,7 +270,7 @@ fitcomp %>%
        , y = 't-stat Replicated (raw)')  +
   coord_trans(x='log10', y='log10', xlim = c(1.5, 17), ylim = c(1.0, 15)) +
   scale_x_continuous(breaks=c(2, 5, 10, 15)) +
-  scale_y_continuous(breaks=c(2, 5, 10, 15))
+  scale_y_continuous(breaks=c(2, 5, 10, 15)) 
 
 ggsave(
   "../results/raw_op.pdf",
@@ -630,47 +617,34 @@ plotme = czret %>%
   select(signalname, `out-of-samp`, `in-samp`, muhat) %>%
   pivot_longer(cols = c(`out-of-samp`, muhat), names_to = 'group', values_to = 'y')
 
-ggplot(plotme %>% filter(group == "out-of-samp"), aes(x=`in-samp`)) +
-  chen_theme +
-  geom_point(size = 2, aes(y=y, color = "Years 1-3 Post Sample")) +
-  geom_abline(size = 1, aes(slope = 1-shrink, intercept = 0, color = "Shrinkage Est.")) + 
-  geom_abline(size = .5, color = MATBLUE, aes(slope = 1-shrink + 2*estsum$se, intercept = 0, color="2 SE C.I.")) +
-  geom_abline(size = .5, color= MATBLUE, aes(slope = 1-shrink - 2*estsum$se, intercept = 0), color="lb") +
-  labs(x="In Sample Returns", y="Out of Sample Returns") +
-  scale_color_manual(values = c("Years 1-3 Post Sample" = 'grey', "Shrinkage Est." = MATBLUE, "2 SE C.I." = MATBLUE )) +
-  theme(
-    legend.position = c(.7, .3)
-  ) +
-  xlim(-1, 3) + 
-  ylim(-2, 3)
+fitslope = summary(lm(y ~ 0 + `in-samp`, data=plotme %>% filter(group == 'out-of-samp')))
+
 
 plotme = rename(plotme, insamp = `in-samp`)
-
 ggplot(data = plotme %>% filter(group == "out-of-samp")) + 
-  geom_point(aes(x = insamp, y = y, colour = "black"),
+  geom_point(aes(x = insamp, y = y, colour = "grey"),
            stat = "Identity", fill = NA) +
-  geom_abline(aes(slope = 1-shrink, intercept = 0,linetype = "red"), colour = "red", size = 1) +
-  geom_abline(aes(slope = 1-shrink + .2, intercept = 0,linetype = "blue"), colour = "blue", size = 1) +
+  geom_abline(aes(slope = 1-shrink, intercept = 0,linetype = "shrink est"), colour = MATBLUE, size = 1) +
+  geom_abline(aes(slope = 1-shrink + 2*estsum$se, intercept = 0,linetype = "error "), size = .7, colour = MATBLUE, size = 1) +
+  geom_abline(slope = 1-shrink - 2*estsum$se, intercept = 0, linetype = "dotted", color = MATBLUE, size = .7) + 
   
-  scale_linetype_manual(labels = "data2", values = "solid") +
-  scale_colour_manual(name = "Parameter\n", labels = "data1", values = "black") +
-  guides(colour = guide_legend(override.aes = list(colour = "black", size = 1),
-                               order = 1),
-         linetype = guide_legend(title = NULL, override.aes = list(linetype = "solid",
-                                                                  colour = "red",
-                                                                  size = 1),
-                                                                  order = 3)) +
-  theme_minimal() +
-  theme(legend.key = element_rect(fill = "white", colour = NA),
-        legend.spacing = unit(0, "lines"))
-
-
-
-
-
-
-
-
+  # geom_smooth(method = lm, x = plotmeaes(x=insamp, y=y)) + 
+  geom_smooth(method = lm, aes(x = plotme$insamp[plotme$group == "out-of-samp"], y = y, linetype = "in samp"), colour=MATRED, size = 1) +
+  
+  scale_linetype_manual(labels = c("Shrinkage Est.", "2 SE C.I.", "In-Samp Mean"), values = c("dotted", "solid", "solid")) +
+  scale_colour_manual(labels = c("Years 1-3 Post Sample"), values = "grey") +
+  guides(colour = guide_legend(override.aes = list(colour = "grey", size = 1), order = 1),
+         linetype = guide_legend(title = NULL, override.aes = list(linetype = c("solid", "dotted", "solid"),
+                                                                  colour = c(MATBLUE, MATBLUE, MATRED),
+                                                                  size = c(1, .5, .5)),
+                                                                  order = 3)) + 
+  chen_theme +
+  theme(
+    legend.position = c(.8, .3)
+  ) +
+  xlim(-1, 3) + 
+  ylim(-2, 3) +
+  labs(y = "Out of Sample / \nBias Adjusted Return", x = "In Sample Return")
 
 
 
@@ -700,12 +674,12 @@ yzsum = temp %>%
   )
 
 # set up 
-edge = seq(0,20,0.5)
+edge = seq(-10,20,0.5)
 t_left = edge[1:(length(edge)-1)]
 t_right = edge[2:length(edge)]
 mid = t_left + diff(edge)/2
 
-edge2  = seq(0,20,0.1)
+edge2  = seq(-10,20,0.1)
 t_left2 = edge2[1:(length(edge2)-1)]
 t_right2 = edge2[2:length(edge2)]
 mid2 = t_left2 + diff(edge2)/2
