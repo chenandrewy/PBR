@@ -644,7 +644,7 @@ ggplot(data = plotme %>% filter(group == "out-of-samp")) +
   ) +
   xlim(-1, 3) + 
   ylim(-2, 3) +
-  labs(y = "Out of Sample / \nBias Adjusted Return", x = "In Sample Return")
+  labs(y = "Out of Sample / \nBias Adjusted Return (% Monthly)", x = "In Sample Return (% Monthly)")
 
 
 
@@ -671,15 +671,16 @@ yzsum = temp %>%
   group_by(signalname) %>% 
   summarize(
     tstat = mean(ret)/sd(ret)*sqrt(dplyr::n()) %>% abs()
-  )
+  ) %>%
+  mutate(tstat = abs(tstat))
 
 # set up 
-edge = seq(-10,20,0.5)
+edge = seq(0,20,0.5)
 t_left = edge[1:(length(edge)-1)]
 t_right = edge[2:length(edge)]
 mid = t_left + diff(edge)/2
 
-edge2  = seq(-10,20,0.1)
+edge2  = seq(0,20,0.1)
 t_left2 = edge2[1:(length(edge2)-1)]
 t_right2 = edge2[2:length(edge2)]
 mid2 = t_left2 + diff(edge2)/2
@@ -729,30 +730,36 @@ groupdat = tibble(
   , linetype = c('dashed','solid')
 )
 
+
 ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   geom_bar(stat='identity',position='identity',alpha=0.6, aes(fill = group)) +
   scale_fill_manual(
     values = 'gray', labels = 'Published', name = NULL
   ) +
-  
   scale_color_manual(
     values = groupdat$color, labels = groupdat$labels, name = NULL
   ) +
-  
   scale_linetype_manual(
     values = groupdat$linetype, labels = groupdat$labels, name = NULL
   ) +
-  
   geom_line(
-    data = dat_all %>% filter(group != 'emp'), aes(color = group, linetype = group)
+    data = dat_all %>% filter(group == 'null'), aes(color = group, linetype = group)
   ) +
   chen_theme +
   theme(
-    legend.position = c(75,50)/100
+    legend.position = c(75,75)/100
     # , legend.margin = margin(t = -15, r = 20, b = 0, l = 5)
   )  +
   xlab('t-statistic') +
   ylab('Frequency') +
   coord_cartesian(
-    xlim = c(-10,8), ylim = c(0,0.2)
+    xlim = c(0,8), ylim = c(0,0.4)
   )  
+
+ggsave(
+  "../results/yan-zheng.pdf",
+  width = 12,
+  height = 8,
+  device = cairo_pdf
+)
+
