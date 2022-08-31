@@ -644,7 +644,7 @@ ggplot(data = plotme %>% filter(group == "out-of-samp")) +
   ) +
   xlim(-1, 3) + 
   ylim(-2, 3) +
-  labs(y = "Out of Sample / \nBias Adjusted Return", x = "In Sample Return")
+  labs(y = "Out of Sample / \nBias Adjusted Return (% Monthly)", x = "In Sample Return (% Monthly)")
 
 
 
@@ -729,6 +729,7 @@ groupdat = tibble(
   , linetype = c('dashed','solid')
 )
 
+
 ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   geom_bar(stat='identity',position='identity',alpha=0.6, aes(fill = group)) +
   scale_fill_manual(
@@ -744,7 +745,7 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   ) +
   
   geom_line(
-    data = dat_all %>% filter(group != 'emp'), aes(color = group, linetype = group)
+    data = dat_all %>% filter(group == 'null'), aes(color = group, linetype = group)
   ) +
   chen_theme +
   theme(
