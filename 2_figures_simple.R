@@ -658,29 +658,7 @@ ggsave(
 
 # Generate YZ Figure ====
 ## import YZ ====
-temp = read_sas('../data-YZ/Yan_Zheng_RFS_Data.sas7bdat')
-
-
-## import YZ ====
-
-yzsum = temp %>%
-  mutate(
-    signalname = paste(transformation, fsvariable, sep = '.')
-  ) %>%
-  transmute(
-    signalname, date = DATE, ret = 100*ddiff_ew
-  ) %>% 
-  filter(!is.na(ret)) %>% 
-  group_by(signalname) %>% 
-  summarize(
-    tstat = mean(ret)/sd(ret)*sqrt(dplyr::n()) %>% abs()
-  ) %>%
-  mutate(tstat = abs(tstat))
-
-
-
-## import YZ ====
-
+yzsum = read.csv('../data/yz_sum.csv')
 
 # set up 
 edge = seq(0,20,0.5)
