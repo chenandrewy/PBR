@@ -795,7 +795,8 @@ ggplot(dat, aes(x=theta, fill = paper)) +
   chen_theme +
   theme(
     legend.position = c(.25, .75)
-  )
+  ) + 
+  xlab(TeX("True Predictability $\\theta_i$"))
 
 ggsave(
   "../results/lit-comp.pdf",
@@ -867,7 +868,8 @@ xlimnum = c(0,6)
 ggplot(
   dat[1:2000,]
   , aes(x=tselect,y=theta)) +
-  geom_point(aes(group = v, color = v)) +
+  geom_point(aes(group = v, color = v, shape = v)) +
+  scale_shape_manual(values = c(16, 1)) +
   geom_vline(xintercept = 2) +
   geom_line(
     data = datsum, aes(x=Etselect, y=Etheta)
@@ -905,7 +907,6 @@ dat %>%
 ## simulate hlz ----------------------------------------------------------------#
 
 n = 1e6
-set.seed(456)
 
 # hlz baseline
 v  = runif(n) > 0.444
@@ -960,18 +961,19 @@ hurdle_bonf05 = qnorm(1-0.05/300/2)
 xlimnum = c(-2,6)
 nplot = 1000
 
-set.seed(24)
 ggplot(
   dat[sample(1:n,nplot),]
-  , aes(x=tselect,y=theta)) +
-  geom_point(aes(group = v, color = v)) +
-  geom_vline(xintercept = 2) +
-  geom_vline(xintercept = hurdle_bonf05) +
+  , aes(x=tselect,y=theta)
+  ) +
+  geom_point(aes(group = v, color = v, shape = v)) +
+  scale_shape_manual(values = c(16, 1)) +
+  geom_vline(xintercept = 2, size = .75) +
+  geom_vline(xintercept = hurdle_bonf05, size = .75) +
+  geom_abline(slope = 1, size = .75) +
   geom_line(
-    data = datsum, aes(x=Etselect, y=Etheta), 
+    data = datsum, size = .75, aes(x=Etselect, y=Etheta), 
   ) +
   scale_color_manual(values=c(MATRED, MATBLUE)) +
-  geom_abline(slope = 1) +
   coord_cartesian(
     xlim = xlimnum, ylim = c(-2,10)
   ) +
