@@ -872,10 +872,12 @@ ggplot(
   scale_shape_manual(values = c(16, 1)) +
   geom_vline(xintercept = 2) +
   geom_line(
-    data = datsum, aes(x=Etselect, y=Etheta)
+    data = datsum, aes(x=Etselect, y=Etheta, linetype = "label 2")
   ) +
+  geom_abline(aes(slope = 1, intercept = 0, linetype = "label 3")) +
+  scale_linetype_manual(values = c(2,1)) +
   scale_color_manual(values=c(MATRED, MATBLUE)) +
-  geom_abline(slope = 1) +
+
   coord_cartesian(
     xlim = xlimnum, ylim = c(-2,10)
   ) +
@@ -885,22 +887,10 @@ ggplot(
            family = "Palatino Linotype", 
            angle = 90
   ) +
-  annotate(geom="text", 
-           label="Label 2", 
-           x=6.25, y=5.5, vjust=-1, 
-           family = "Palatino Linotype", 
-           angle = 20
-  ) +
-  annotate(geom="text", 
-           label="Label 3", 
-           x=6.15, y=6.1, vjust=-1, 
-           family = "Palatino Linotype", 
-           angle = 20
-  ) +
-  theme(
-    legend.position = c(25,50)/100
-  ) + 
   chen_theme +
+  theme(
+    legend.position = c(.25, .75)
+  ) +
   xlab("t-statistic") +
   ylab(TeX("True Predictability $\\theta_i$"))
 
@@ -922,7 +912,7 @@ dat %>%
     , mean(theta) / mean(tselect)
   )
 
-## simulate hlz ----------------------------------------------------------------#
+## simulate hlz ----------------------------------------------------------------
 
 n = 1e6
 
@@ -987,10 +977,11 @@ ggplot(
   scale_shape_manual(values = c(16, 1)) +
   geom_vline(xintercept = 2, size = .75) +
   geom_vline(xintercept = hurdle_bonf05, size = .75) +
-  geom_abline(slope = 1, size = .75) +
+  geom_abline(aes(slope = 1, intercept = 0, linetype = "label 4")) +
   geom_line(
-    data = datsum, size = .75, aes(x=Etselect, y=Etheta), 
+    data = datsum, aes(x=Etselect, y=Etheta, linetype = "label 3")
   ) +
+  scale_linetype_manual(values = c(2,1)) +
   scale_color_manual(values=c(MATRED, MATBLUE)) +
   coord_cartesian(
     xlim = xlimnum, ylim = c(-2,10)
@@ -1007,22 +998,10 @@ ggplot(
            family = "Palatino Linotype", 
            angle = 90
   ) +
-  annotate(geom="text", 
-           label="Label 3", 
-           x=-1.75, y=-1.75, vjust=-1, 
-           family = "Palatino Linotype", 
-           angle = 25
-  ) +
-  annotate(geom="text", 
-           label="Label 4", 
-           x=-1.85, y=.25, vjust=-1, 
-           family = "Palatino Linotype", 
-           angle = 0
-  ) +
-  theme(
-    legend.position = c(25,25)/100
-  ) + 
   chen_theme +
+  theme(
+    legend.position = c(.25, .75)
+  ) +
   xlab("t-statistic") +
   ylab(TeX("True Predictability $\\theta_i$"))
 
