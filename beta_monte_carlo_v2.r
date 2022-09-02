@@ -63,8 +63,6 @@ ggplot(
   , aes(x=tselect,y=theta)) +
   geom_point(aes(group = v, color = v)) +
   geom_vline(xintercept = 2) +
-  geom_vline(xintercept = hurdle_05) +
-  geom_vline(xintercept = hurdle_01) +
   geom_line(
     data = datsum, aes(x=Etselect, y=Etheta)
   ) +
@@ -148,9 +146,7 @@ datsum = datsum %>%
 # find hurdles
 hurdle_05 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 5)])
 hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
-hurdle_bonf05 = qnorm(1-0.05/1400/2)
-
-ggsave('../results/monte-carlo-hlz.pdf')
+hurdle_bonf05 = qnorm(1-0.05/300/2)
 
 ## plot top panel ==== #
 
@@ -164,7 +160,7 @@ ggplot(
   , aes(x=tselect,y=theta)) +
   geom_point(aes(group = v, color = v)) +
   geom_vline(xintercept = 2) +
-  geom_vline(xintercept = hurdle_05) +
+  geom_vline(xintercept = hurdle_bonf05) +
   geom_line(
     data = datsum, aes(x=Etselect, y=Etheta)
   ) +
@@ -176,6 +172,8 @@ ggplot(
     legend.position = c(25,75)/100
   )
 
+
+ggsave('../results/monte-carlo-hlz.pdf')
 
 
 
