@@ -49,6 +49,7 @@ chen_theme = theme_minimal() +
 # Import/Prepare Data ====
 cz_all = fread("../data/PredictorPortsFull.csv")
 signaldoc = fread('../data/SignalDoc.csv')
+yzsum = fread('../data/yz_sum.csv')
 
 signaldoc = signaldoc %>% rename(signalname = Acronym)
 
@@ -283,23 +284,6 @@ ggsave(
 
 
 # T Too Big Table ---------------------------------------------------------
-## import YZ ====
-temp = read_sas('../data-YZ/Yan_Zheng_RFS_Data.sas7bdat')
-
-yzsum = temp %>%
-  mutate(
-    signalname = paste(transformation, fsvariable, sep = '.')
-  ) %>%
-  transmute(
-    signalname, date = DATE, ret = 100*ddiff_ew
-  ) %>% 
-  filter(!is.na(ret)) %>% 
-  group_by(signalname) %>% 
-  summarize(
-    tstat = mean(ret)/sd(ret)*sqrt(dplyr::n()) %>% abs()
-  )
-
-
 ## settings ====
 t_left = c(seq(2,9,1), Inf)
 sig_pct = pnorm(-t_left)*200
@@ -595,16 +579,11 @@ for (i in 1:(nboot+1)){
 
 } # end for i in 1:nboot
 
-dat_mean_t
-
 # find point estimate and standard errors
 estsum = list(
   point = dat_mean_t %>% filter(group == 'emp') %>% pull(shrink)
   , se  = dat_mean_t %>% filter(group == 'boot') %>% summarize(se = sd(shrink)) %>% pull(se)
 )
-
-
-
 
 ## plot ----
 plotme = czret %>% 
@@ -656,10 +635,7 @@ ggsave(
 )
 
 
-# Generate YZ Figure ====
-## import YZ ====
-yzsum = read.csv('../data/yz_sum.csv')
-
+# YZ Figure ====
 # set up 
 edge = seq(0,20,0.5)
 t_left = edge[1:(length(edge)-1)]
@@ -747,4 +723,269 @@ ggsave(
   height = 8,
   device = cairo_pdf
 )
+
+
+
+# Lit Comp Figure ----
+## generate theta data -----
+n = 1e4
+
+# hlz
+v  = runif(n) > 0.444
+se = 1500/sqrt(12)/sqrt(240)
+mu = rexp(n, 1/55.5)
+mu[!v] = 0
+theta_hlz = mu / se
+
+dat.hlz = data.table(
+  paper = 'hlz', theta = theta_hlz
+)
+
+# cz
+mu = rt(n, 4)*45
+se = 22
+
+dat.cz = data.table(
+  paper = 'cz', theta = mu/se
+)
+
+
+#jkp
+# with pub bias ( p 44)
+tauc_alt = 29
+tauw = 21
+sigmu = (tauc_alt^2 + tauw^2)^0.5
+
+# footnote 36
+sig = (1000^2/12)^(1/2)
+T = 420
+se = sig/sqrt(T)
+sigtheta = sigmu/se
+
+dat.jkp = data.table(
+  paper = 'jkp', theta = rnorm(n,0,sigtheta)
+)
+
+# ez
+dat.ez = data.table(
+  paper = 'ez', theta = rnorm(n,0,3)
+)
+
+dat = rbind(dat.hlz,dat.cz, dat.jkp, dat.ez)
+
+## plot -----
+ggplot(dat, aes(x=theta, fill = paper)) +
+  geom_histogram(position = 'identity', alpha = 0.6, breaks = seq(-10,10,0.5)
+  ) +
+  scale_fill_manual(
+    values = c(hlz = MATBLUE,
+              cz  = MATRED,
+              jkp = "grey",
+              ez = MATYELLOW)
+    ,labels = c("Harvey, Liu and Zhu", "Chen, Zimmerman", "Jensen, Kelly and Pederson", "EZ")
+  ) +
+  coord_cartesian(
+    xlim = c(-10,10)
+  ) + 
+  chen_theme +
+  theme(
+    legend.position = c(.25, .75)
+  )
+
+ggsave(
+  "../results/lit-comp.pdf",
+  width = 12,
+  height = 8,
+  device = cairo_pdf
+)
+
+dat %>% 
+  filter(theta > 0) %>% 
+  group_by(paper) %>% 
+  summarize(mean(theta))
+
+
+
+# Monte Carlo Figure -----
+library(data.table)
+library(tidyverse)
+
+
+## simulate ez ----------------------------------------------------------------
+
+n = 1e6
+set.seed(456)
+
+# ez
+theta_ez = rnorm(n,0,3)
+
+# simulate
+dat = data.table(
+  Z = rnorm(n), theta = theta_ez
+) %>% 
+  mutate(
+    t = theta + Z, v = theta > 0, tabs = abs(t)
+  ) %>% 
+  mutate(
+    tselect = t
+  )
+
+# fit shrinkage
+datsum = dat %>% 
+  mutate(
+    tgroup = ntile(tselect,100)
+  ) %>% 
+  group_by(tgroup) %>% 
+  summarize(
+    tselect_left = min(tselect), tselect_right = max(tselect)
+    , Etselect = mean(tselect), Etheta = mean(theta), n = dplyr::n()
+    , nfalse = sum(!v)
+  )
+
+
+# fit "cdf"
+datsum = datsum %>% 
+  arrange(-Etselect) %>% 
+  mutate(
+    nfalse_cum = cumsum(nfalse)
+    , n_cum = cumsum(n)
+    , fdr_tselect_left = nfalse_cum / n_cum * 100
+  ) %>% 
+  arrange(Etselect)
+
+# find hurdles
+hurdle_05 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 5)])
+hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
+
+
+
+## plot top panel --------------------------------------------------------------------
+
+# settings for both panels here
+xlimnum = c(0,6)
+
+ggplot(
+  dat[1:2000,]
+  , aes(x=tselect,y=theta)) +
+  geom_point(aes(group = v, color = v)) +
+  geom_vline(xintercept = 2) +
+  geom_line(
+    data = datsum, aes(x=Etselect, y=Etheta)
+  ) +
+  geom_abline(slope = 1) +
+  coord_cartesian(
+    xlim = xlimnum, ylim = c(-2,10)
+  ) +
+  theme(
+    legend.position = c(25,75)/100
+  ) + 
+  chen_theme
+
+
+ggsave('../results/monte-carlo-ez.pdf')
+
+
+## numbers for text --------------------------------------------------------
+
+dat %>% 
+  filter(tselect>2) %>% 
+  summarize(
+    mean(tselect)
+    , mean(theta)
+    , mean(theta <= 0)    
+    , mean(theta) / mean(tselect)
+  )
+
+## simulate hlz ----------------------------------------------------------------#
+
+n = 1e6
+set.seed(456)
+
+# hlz baseline
+v  = runif(n) > 0.444
+se = 1500/sqrt(12)/sqrt(240)
+mu = rexp(n, 1/55.5*se)
+null = rnorm(n, 0, 0.1)
+mu[!v] = null[!v]
+theta_hlz = mu
+
+# simulate
+dat = data.table(
+  Z = rnorm(n), theta = theta_hlz, v = v
+) %>% 
+  mutate(
+    t = theta + Z, tabs = abs(t)
+  ) %>% 
+  mutate(
+    tselect = t
+  )
+
+# fit shrinkage
+datsum = dat %>% 
+  mutate(
+    tgroup = ntile(tselect,100)
+  ) %>% 
+  group_by(tgroup) %>% 
+  summarize(
+    tselect_left = min(tselect), tselect_right = max(tselect)
+    , Etselect = mean(tselect), Etheta = mean(theta), n = dplyr::n()
+    , nfalse = sum(!v)
+  )
+
+
+# fit "cdf"
+datsum = datsum %>% 
+  arrange(-Etselect) %>% 
+  mutate(
+    nfalse_cum = cumsum(nfalse)
+    , n_cum = cumsum(n)
+    , fdr_tselect_left = nfalse_cum / n_cum * 100
+  ) %>% 
+  arrange(Etselect)
+
+# find hurdles
+hurdle_05 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 5)])
+hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
+hurdle_bonf05 = qnorm(1-0.05/300/2)
+
+## plot bottom panel ====
+
+# settings for both panels here
+xlimnum = c(-2,6)
+nplot = 1000
+
+set.seed(24)
+ggplot(
+  dat[sample(1:n,nplot),]
+  , aes(x=tselect,y=theta)) +
+  geom_point(aes(group = v, color = v)) +
+  geom_vline(xintercept = 2) +
+  geom_vline(xintercept = hurdle_bonf05) +
+  geom_line(
+    data = datsum, aes(x=Etselect, y=Etheta)
+  ) +
+  geom_abline(slope = 1) +
+  coord_cartesian(
+    xlim = xlimnum, ylim = c(-2,10)
+  ) +
+  theme(
+    legend.position = c(25,75)/100
+  ) + 
+  chen_theme
+
+
+ggsave('../results/monte-carlo-hlz.pdf')
+
+
+
+## summarize
+
+dat %>% 
+  filter(tselect>2) %>% 
+  summarize(
+    mean(tselect)
+    , mean(theta)
+    , mean(!v)    
+    , mean(theta) / mean(tselect)
+  )
 
