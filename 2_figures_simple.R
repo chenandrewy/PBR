@@ -796,7 +796,7 @@ ggplot(dat, aes(x=theta, fill = paper)) +
   theme(
     legend.position = c(.25, .75)
   ) + 
-  xlab(TeX("True Predictability $\\theta_i$"))
+  xlab(TeX("True Predictability $\\theta_i$")) 
 
 ggsave(
   "../results/lit-comp.pdf",
@@ -863,7 +863,7 @@ hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
 ## plot ez (top panel) --------------------------------------------------------------------
 
 # settings for both panels here
-xlimnum = c(0,6)
+xlimnum = c(0,7)
 
 ggplot(
   dat[1:2000,]
@@ -878,6 +878,24 @@ ggplot(
   geom_abline(slope = 1) +
   coord_cartesian(
     xlim = xlimnum, ylim = c(-2,10)
+  ) +
+  annotate(geom="text", 
+           label="Label 1", 
+           x=1.95, y=-1.5, vjust=-1, 
+           family = "Palatino Linotype", 
+           angle = 90
+  ) +
+  annotate(geom="text", 
+           label="Label 2", 
+           x=6.25, y=5.5, vjust=-1, 
+           family = "Palatino Linotype", 
+           angle = 20
+  ) +
+  annotate(geom="text", 
+           label="Label 3", 
+           x=6.15, y=6.1, vjust=-1, 
+           family = "Palatino Linotype", 
+           angle = 20
   ) +
   theme(
     legend.position = c(25,50)/100
@@ -955,7 +973,7 @@ hurdle_05 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 5)])
 hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
 hurdle_bonf05 = qnorm(1-0.05/300/2)
 
-## plot hlz (bottom pannel)
+## plot hlz (bottom pannel) ----
 
 # settings for both panels here
 xlimnum = c(-2,6)
@@ -976,6 +994,30 @@ ggplot(
   scale_color_manual(values=c(MATRED, MATBLUE)) +
   coord_cartesian(
     xlim = xlimnum, ylim = c(-2,10)
+  ) +
+  annotate(geom="text", 
+           label="Label 1", 
+           x=1.95, y=-1.5, vjust=-1, 
+           family = "Palatino Linotype", 
+           angle = 90
+  ) +
+  annotate(geom="text", 
+           label="Label 2", 
+           x=3.7, y=-1.5, vjust=-1, 
+           family = "Palatino Linotype", 
+           angle = 90
+  ) +
+  annotate(geom="text", 
+           label="Label 3", 
+           x=-1.75, y=-1.75, vjust=-1, 
+           family = "Palatino Linotype", 
+           angle = 25
+  ) +
+  annotate(geom="text", 
+           label="Label 4", 
+           x=-1.85, y=.25, vjust=-1, 
+           family = "Palatino Linotype", 
+           angle = 0
   ) +
   theme(
     legend.position = c(25,25)/100
