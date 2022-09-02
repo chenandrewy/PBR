@@ -512,7 +512,12 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
     xlim = c(0,10), ylim = c(0,0.9)
   )  
 
-ggsave('../results/filling-the-gap.pdf', width = 12, height = 8, device = cairo_pdf)
+ggsave('../results/filling-the-gap.pdf', 
+       width = 12,
+       height = 8,
+       device = cairo_pdf
+      )
+
 
 
 # Shrinkage Figure ----
@@ -807,12 +812,7 @@ dat %>%
 
 
 # Monte Carlo Figure -----
-library(data.table)
-library(tidyverse)
-
-
 ## simulate ez ----------------------------------------------------------------
-
 n = 1e6
 set.seed(456)
 
@@ -859,7 +859,7 @@ hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
 
 
 
-## plot top panel --------------------------------------------------------------------
+## plot ez (top panel) --------------------------------------------------------------------
 
 # settings for both panels here
 xlimnum = c(0,6)
@@ -872,17 +872,23 @@ ggplot(
   geom_line(
     data = datsum, aes(x=Etselect, y=Etheta)
   ) +
+  scale_color_manual(values=c(MATRED, MATBLUE)) +
   geom_abline(slope = 1) +
   coord_cartesian(
     xlim = xlimnum, ylim = c(-2,10)
   ) +
   theme(
-    legend.position = c(25,75)/100
+    legend.position = c(25,50)/100
   ) + 
-  chen_theme
+  chen_theme +
+  xlab("t-statistic") +
+  ylab(TeX("True Predictability $\\theta_i$"))
 
-
-ggsave('../results/monte-carlo-ez.pdf')
+ggsave('../results/monte-carlo-ez.pdf', 
+       width = 12,
+       height = 8,
+       device = cairo_pdf
+)
 
 
 ## numbers for text --------------------------------------------------------
@@ -948,7 +954,7 @@ hurdle_05 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 5)])
 hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
 hurdle_bonf05 = qnorm(1-0.05/300/2)
 
-## plot bottom panel ====
+## plot hlz (bottom pannel)
 
 # settings for both panels here
 xlimnum = c(-2,6)
@@ -962,24 +968,27 @@ ggplot(
   geom_vline(xintercept = 2) +
   geom_vline(xintercept = hurdle_bonf05) +
   geom_line(
-    data = datsum, aes(x=Etselect, y=Etheta)
+    data = datsum, aes(x=Etselect, y=Etheta), 
   ) +
+  scale_color_manual(values=c(MATRED, MATBLUE)) +
   geom_abline(slope = 1) +
   coord_cartesian(
     xlim = xlimnum, ylim = c(-2,10)
   ) +
   theme(
-    legend.position = c(25,75)/100
+    legend.position = c(25,25)/100
   ) + 
-  chen_theme
+  chen_theme +
+  xlab("t-statistic") +
+  ylab(TeX("True Predictability $\\theta_i$"))
 
-
-ggsave('../results/monte-carlo-hlz.pdf')
-
-
+ggsave('../results/monte-carlo-hlz.pdf', 
+       width = 12,
+       height = 8,
+       device = cairo_pdf
+)
 
 ## summarize
-
 dat %>% 
   filter(tselect>2) %>% 
   summarize(
