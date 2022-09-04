@@ -46,14 +46,14 @@ chen_theme = theme_minimal() +
     , legend.title = element_blank()    
   ) 
 
-# Import/Prepare Data ====
+## Import/Prepare Data ====
 cz_all = fread("../data/PredictorPortsFull.csv")
 signaldoc = fread('../data/SignalDoc.csv')
-yzsum = fread('../data/yz_sum.csv')
+
 
 signaldoc = signaldoc %>% rename(signalname = Acronym)
 
-## CZRET ====
+# czret (monthly returns)
 signaldoc_dates = signaldoc %>% 
   mutate(
     pubdate = as.Date(paste0(Year, '-12-31'))
@@ -73,10 +73,11 @@ czret = cz_all %>%
       , (date > pubdate) ~ 'post-pub'
       , TRUE ~ 'NA_character_'
     )
-  )
+  ) %>% 
+  select(signalname, date, ret, samptype)
 
 
-## CZSUM ====
+# cz sum (sum stats by signal-samptype)
 czsum = czret %>%
   group_by(signalname, samptype) %>%
   summarize(
@@ -86,15 +87,88 @@ czsum = czret %>%
   )
 
 
-## CZRETMAT ====
+# czretmat (return matrix for bootstraps)
 # used in correlations and one of the bootstraps
 # use full sample for most overlap
 czretmat = czret %>% 
-  filter(port == 'LS') %>% 
   select(signalname, date, ret) %>% 
   pivot_wider(names_from = signalname, values_from = ret) %>%
   select(-date) %>% 
   as.matrix()
+
+
+# Replication Figure ------------------------------------------
+## performance measures ====
+
+# make data on hand collection
+fit_OP = signaldoc %>% 
+  mutate(
+    tstat_OP = abs(as.numeric(`T-Stat`))
+  ) %>% 
+  select(
+    signalname, tstat_OP, `Predictability in OP`, `Signal Rep Quality`
+    , `Test in OP`, `Evidence Summary`
+  ) %>% 
+  filter(
+    `Signal Rep Quality` %in% c('1_good','2_fair')
+    , grepl('port', `Test in OP`)
+    , `Predictability in OP` != 'indirect'
+  ) %>% 
+  mutate(
+    adjusted = if_else(
+      `Test in OP` %in% c('port sort', 'LS port') # these are raw long-shorts
+      , catname[1]
+      , catname[2]
+    )
+    , adjusted = if_else(
+      grepl('nonstandard', `Evidence Summary`)
+      , catname[3], adjusted
+    )
+    , adjusted = factor(
+      adjusted
+      , levels = catname
+    )
+  ) %>% 
+  select(signalname, starts_with('tstat'), adjusted)
+
+fitcomp = czsum %>% 
+  rename(tstat_CZ = tstat) %>% 
+  filter(samptype == "in-samp") %>%
+  inner_join(
+    fit_OP
+    , by = 'signalname'
+  ) 
+
+
+## plot ====
+
+
+# plot
+legname = 'Original Method'
+breaks = c(2,4, 6, 8, 12,  16)
+fitcomp %>% 
+  filter(adjusted == 'raw') %>% 
+  ggplot(aes(x=tstat_OP, y = tstat_CZ)) +
+  geom_point(size=4, color = MATBLUE) +
+  chen_theme +
+  theme(
+    legend.position = c(.75, .25)
+  ) + 
+  geom_abline(
+    aes(slope = 1, intercept = 0)
+  )+
+  labs(x = 't-stat Original Paper'
+       , y = 't-stat Replicated')  +
+  coord_trans(x='log10', y='log10', xlim = c(1.5, 17), ylim = c(1.5, 15)) +
+  scale_x_continuous(breaks=breaks) +
+  scale_y_continuous(breaks=breaks) 
+
+ggsave(
+  "../results/raw_op.pdf",
+  width = 12,
+  height = 8,
+  device = cairo_pdf
+)
 
 
 
@@ -180,106 +254,6 @@ ggsave(
 )
 
 
-# Generate R2 Replication Figure ------------------------------------------
-## performance measures ====
-
-# select comparable t-stats
-fit_OP = signaldoc %>% 
-  mutate(
-    tstat_OP = abs(as.numeric(`T-Stat`))
-  ) %>% 
-  select(
-    signalname, tstat_OP, `Predictability in OP`, `Signal Rep Quality`, `Test in OP`
-  ) %>% 
-  filter(
-    `Signal Rep Quality` %in% c('1_good','2_fair')
-    , grepl('port', `Test in OP`)
-    , `Predictability in OP` != 'indirect'
-  ) 
-
-
-## prepare signal doc ====
-catname = c('raw','factor or char adjusted','nonstandard lag')
-
-# select comparable t-stats
-fit_OP = signaldoc %>% 
-  mutate(
-    tstat_OP = abs(as.numeric(`T-Stat`))
-  ) %>% 
-  select(
-    signalname, tstat_OP, `Predictability in OP`
-    , `Signal Rep Quality`, `Test in OP`, `Evidence Summary`
-    , SampleEndYear
-  ) %>% 
-  filter(
-    `Signal Rep Quality` %in% c('1_good','2_fair')
-    , grepl('port', `Test in OP`)
-    , `Predictability in OP` != 'indirect'
-  ) %>% 
-  filter(!is.na(tstat_OP)) %>%   # some port sorts have only point estimates 
-  mutate(
-    adjusted = if_else(
-      `Test in OP` %in% c('port sort', 'LS port') # these are raw long-shorts
-      , catname[1]
-      , catname[2]
-    ) 
-    , adjusted = if_else(
-      grepl('nonstandard', `Evidence Summary`)
-      , catname[3], adjusted
-    )
-    , adjusted = factor(
-      adjusted
-      , levels = catname
-    )
-  )
-
-
-## plot ====
-# merge 
-ablines = tibble(slope = 1, 
-                 intercept = 0,
-                 group = factor(x = c('45 degree line'),
-                                levels = c('45 degree line')))
-
-fitcomp = czsum %>% 
-  rename(tstat_CZ = tstat) %>% 
-  filter(samptype == "in-samp") %>%
-  inner_join(
-    fit_OP
-    , by = 'signalname'
-  ) 
-
-# plot
-legname = 'Original Method'
-fitcomp %>% 
-  ggplot(aes(x=tstat_OP, y = tstat_CZ)) +
-  geom_point(size=4, aes(shape =adjusted, fill = adjusted)) +
-  chen_theme +
-  theme(
-    legend.position = c(.75, .25)
-  ) + 
-  geom_abline(
-    aes(slope = 1, intercept = 0)
-  ) +
-  scale_shape_manual(
-    values = c(21, 22, 23), name = legname
-  ) +
-  scale_fill_manual(
-    values = c(MATRED, MATBLUE, MATYELLOW), name = legname
-  ) +
-  labs(x = 't-stat Original Paper (see legend)'
-       , y = 't-stat Replicated (raw)')  +
-  coord_trans(x='log10', y='log10', xlim = c(1.5, 17), ylim = c(1.0, 15)) +
-  scale_x_continuous(breaks=c(2, 5, 10, 15)) +
-  scale_y_continuous(breaks=c(2, 5, 10, 15)) 
-
-ggsave(
-  "../results/raw_op.pdf",
-  width = 12,
-  height = 8,
-  device = cairo_pdf
-)
-
 
 
 
@@ -287,7 +261,7 @@ ggsave(
 ## settings ====
 t_left = c(seq(2,9,1), Inf)
 sig_pct = pnorm(-t_left)*200
-nboot = 10*200
+nboot = 100
 
 ## bootstrap ====
 ndatemin = 240
@@ -367,10 +341,6 @@ stargazer(tab_wide, type = "latex", title = "Results", align=TRUE)
 
 
 
-
-
-
-
 # Correlation Figures ------------------------------------------------------
 ## correlation dist ====
 cormat = cor(czretmat, use = 'pairwise.complete.obs')
@@ -379,14 +349,15 @@ corlong = cormat[lower.tri(cormat)]
 ggplot(data.frame(cor = corlong), aes(x=cor)) +
   geom_histogram(alpha = .8, fill=MATBLUE) +
   chen_theme + 
-  labs(x = 'Pairwise Correlations'
+  labs(x = 'Pairwise Corr Between Monthly Returns'
        ,y = 'Count')
 
 ggsave(
   "../results/correlation.pdf",
   width = 12,
   height = 12,
-  device = cairo_pdf
+  device = cairo_pdf,
+  scale = 0.7
 )
 
 
@@ -407,12 +378,6 @@ ggplot(plotme, aes(color="blue", x=Num_PC, y = pct_explained)) + geom_line() +
   ) + 
   chen_theme +
   geom_line(size = 1.0) +
-  # theme_minimal(
-  #   base_size = 15
-  # ) + 
-  # theme(
-  #   text = element_text(size=40, family = "Palatino Linotype")
-  # ) + 
   labs(x="Number of Principal Components", y="% Varaince Explained") +
   scale_color_manual(values=MATBLUE) +
   theme(legend.position="none") +
@@ -422,7 +387,8 @@ ggsave(
   "../results/PCA.pdf",
   width = 12,
   height = 12,
-  device = cairo_pdf
+  device = cairo_pdf,
+  scale = 0.7
 )
 
 
@@ -456,6 +422,16 @@ dat_null =data.frame(
 ) %>% 
   mutate(prob = if_else(t_mid > 2, prob, 0))
 
+# miss
+sigfit = sqrt(1+1.5^2)
+dat_miss = data.frame(
+  t_mid = mid2
+  , prob = (pnorm(t_right2, sd = sigfit) - pnorm(t_left2, sd = sigfit))/
+    (1-pnorm(2, sd = sigfit))*rescalefac*(1-F_emp(2))
+  , group = 'miss'
+) %>% 
+  mutate(prob = if_else(t_mid > 2, prob, 0))
+
 # fit
 sigfit = sqrt(1+3^2)
 dat_fit = data.frame(
@@ -467,21 +443,22 @@ dat_fit = data.frame(
   mutate(prob = if_else(t_mid > 2, prob, 0))
 
 # merge and factor group
-dat_all = rbind(dat_emp,dat_null,dat_fit) %>% 
+dat_all = rbind(dat_emp,dat_null,dat_miss,dat_fit) %>% 
   mutate(
-    group = factor(group, levels = c('emp','null','fit'))
+    group = factor(group, levels = c('emp','null','miss','fit'))
   )
 
 
 ## plot --------------------------------------------------------------------
 groupdat = tibble(
-  group = c('null', 'fit')
-  , color = c(MATRED, MATBLUE)
+  group = c('null', 'miss', 'fit')
+  , color = c(MATRED, MATYELLOW, MATBLUE)
   , labels = c(
-    TeX('Null ($\\sigma_\\mu=0$)')
-    , TeX('Fit ($\\sigma_\\mu=3$)')
+    TeX('$\\sigma_\\mu=0$ (Null)')
+    , TeX('$\\sigma_\\mu=1.5$')    
+    , TeX('$\\sigma_\\mu=3$ (Fit)')
   )
-  , linetype = c('dashed','solid')
+  , linetype = c('dashed','dotdash','solid')
 )
 
 ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
@@ -489,17 +466,16 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   scale_fill_manual(
     values = 'gray', labels = 'Published', name = NULL
   ) +
-  
   scale_color_manual(
     values = groupdat$color, labels = groupdat$labels, name = NULL
   ) +
-  
   scale_linetype_manual(
     values = groupdat$linetype, labels = groupdat$labels, name = NULL
   ) +
-  
   geom_line(
-    data = dat_all %>% filter(group != 'emp'), aes(color = group, linetype = group)
+    data = dat_all %>% filter(group != 'emp')
+    , aes(color = group, linetype = group)
+    , size = 1
   ) +
   chen_theme +
   theme(
@@ -509,7 +485,7 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   xlab('t-statistic') +
   ylab('Frequency') +
   coord_cartesian(
-    xlim = c(0,10), ylim = c(0,0.9)
+    xlim = c(0,10), ylim = c(0,0.5)
   )  
 
 ggsave('../results/filling-the-gap.pdf', 
@@ -517,6 +493,360 @@ ggsave('../results/filling-the-gap.pdf',
        height = 8,
        device = cairo_pdf
       )
+
+# Lit Comp Figure ----
+## generate theta data -----
+n = 1e4
+
+# hlz
+v  = runif(n) > 0.444
+se = 1500/sqrt(12)/sqrt(240)
+mu = rexp(n, 1/55.5)
+mu[!v] = 0
+theta_hlz = mu / se
+
+dat.hlz = data.table(
+  paper = 'hlz', theta = theta_hlz
+)
+
+# cz
+mu = rt(n, 4)*45
+se = 22
+
+dat.cz = data.table(
+  paper = 'cz', theta = mu/se
+)
+
+
+#jkp
+# with pub bias ( p 44)
+tauc_alt = 29
+tauw = 21
+sigmu = (tauc_alt^2 + tauw^2)^0.5
+
+# footnote 36
+sig = (1000^2/12)^(1/2)
+T = 420
+se = sig/sqrt(T)
+sigtheta = sigmu/se
+
+dat.jkp = data.table(
+  paper = 'jkp', theta = rnorm(n,0,sigtheta)
+)
+
+# ez
+dat.ez = data.table(
+  paper = 'ez', theta = rnorm(n,0,3)
+)
+
+dat = rbind(dat.hlz,dat.cz, dat.jkp, dat.ez) %>% 
+  mutate(
+    paper = factor(paper, levels = c('ez','hlz','cz','jkp'))
+  )
+
+
+## plot -----
+
+groupdat = tibble(
+  group =  c('ez','hlz','cz','jkp')
+  , color = c( MATBLUE, MATRED, MATYELLOW, 'gray')
+  , labels = c(
+    TeX("Simple $\\theta_i \\sim$ Normal")
+    , "Harvey, Liu and Zhu 2016"
+    , "Chen, Zimmerman 2020"
+    , "Jensen, Kelly and Pederson Forth"
+  )
+  , linetype = c(1,2,3,4)
+)
+
+
+
+ggplot(dat, aes(x=theta, linetype = paper, color = paper)) +
+  geom_density(
+    position = 'identity', alpha = 0.6, adjust = 2, size = 1
+  ) +
+  coord_cartesian(
+    xlim = c(-10,10), ylim = c(0, 0.4)
+  ) +
+  scale_color_manual(
+    values = groupdat$color, labels = groupdat$labels, name = NULL
+  ) +
+  scale_linetype_manual(
+    values = groupdat$linetype, labels = groupdat$labels, name = NULL
+  ) +
+  chen_theme +
+  theme(
+    legend.position = c(.25, .75)
+  ) + 
+  xlab(TeX("True Predictability $\\theta_i$"))  
+
+ggsave(
+  "../results/lit-comp.pdf",
+  width = 12,
+  height = 8,
+  device = cairo_pdf
+)
+
+
+## plot -----
+ggplot(dat, aes(x=theta, fill = paper)) +
+  geom_density(
+    position = 'identity', alpha = 0.6, breaks = seq(-10,10,0.5)
+  ) +
+  scale_fill_manual(
+    values = c(hlz = MATBLUE,
+               cz  = MATRED,
+               jkp = "grey",
+               ez = MATYELLOW)
+    ,labels = 
+      c(
+        "Harvey, Liu and Zhu 2016"
+        , "Chen, Zimmerman 2020"
+        , "Jensen, Kelly and Pederson Forth"
+        , TeX("Simple $\\theta_i \\sim$ Normal")
+        )
+  ) +
+  coord_cartesian(
+    xlim = c(-10,10)
+  ) + 
+  chen_theme +
+  theme(
+    legend.position = c(.25, .75)
+  ) + 
+  xlab(TeX("True Predictability $\\theta_i$")) 
+
+ggsave(
+  "../results/lit-comp.pdf",
+  width = 12,
+  height = 8,
+  device = cairo_pdf
+)
+
+
+# Monte Carlo: EZ -----
+
+## simulate ez ----------------------------------------------------------------
+n = 1e6
+set.seed(459)
+
+# ez
+theta_ez = rnorm(n,0,3)
+
+# simulate
+dat = data.table(
+  Z = rnorm(n), theta = theta_ez
+) %>% 
+  mutate(
+    t = theta + Z, v = theta > 0, tabs = abs(t)
+  ) %>% 
+  mutate(
+    v = factor(
+      v, levels = c(TRUE,FALSE), labels = c('True Predictor', 'False Predictor')
+    )
+  ) %>% 
+  mutate(
+    tselect = t
+  ) 
+
+# fit shrinkage
+datsum = dat %>% 
+  mutate(
+    tgroup = ntile(tselect,100)
+  ) %>% 
+  group_by(tgroup) %>% 
+  summarize(
+    tselect_left = min(tselect), tselect_right = max(tselect)
+    , Etselect = mean(tselect), Etheta = mean(theta), n = dplyr::n()
+    , nfalse = sum(!v)
+  )
+
+
+# fit "cdf"
+datsum = datsum %>% 
+  arrange(-Etselect) %>% 
+  mutate(
+    nfalse_cum = cumsum(nfalse)
+    , n_cum = cumsum(n)
+    , fdr_tselect_left = nfalse_cum / n_cum * 100
+  ) %>% 
+  arrange(Etselect)
+
+# find hurdles
+hurdle_05 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 5)])
+hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
+
+
+
+## plot ez (top panel) --------------------------------------------------------------------
+
+# settings for both panels here
+xlimnum = c(0,7)
+
+set.seed(89)
+iselect = sample(1:n, 1000)
+
+
+ggplot(
+  dat[iselect,]
+  , aes(x=tselect,y=theta)) +
+  geom_point(aes(group = v, color = v, shape = v)) +
+  scale_shape_manual(values = c(16, 1)) +
+  geom_vline(xintercept = 1.96) +
+  geom_line(
+    data = datsum, aes(x=Etselect, y=Etheta, linetype = "Shrinkage Correction")
+  ) +
+  geom_abline(aes(slope = 1, intercept = 0, linetype = "Naive Estimate (45 deg)")) +
+  scale_linetype_manual(values = c(2,1)) +
+  scale_color_manual(values=c(MATRED, MATBLUE)) +
+  coord_cartesian(
+    xlim = xlimnum, ylim = c(-2,10)
+  ) +
+  annotate(geom="text",
+           label="Classical Hurdle",
+           x=1.95, y=-1.5, vjust=-1,
+           family = "Palatino Linotype",
+           angle = 90
+  ) +
+  chen_theme +
+  theme(
+    legend.position = c(.25, .75)
+  ) +
+  xlab("t-statistic") +
+  ylab(TeX("True Predictability $\\theta_i$"))
+
+ggsave('../results/monte-carlo-ez.pdf', 
+       width = 12,
+       height = 8,
+       device = cairo_pdf
+)
+
+
+## numbers for text --------------------------------------------------------
+
+dat %>% 
+  filter(tselect>2) %>% 
+  summarize(
+    mean(tselect)
+    , mean(theta)
+    , mean(theta <= 0)    
+    , mean(theta) / mean(tselect)
+  )
+
+# Monte Carlo: HLZ -----
+
+## simulate hlz ----------------------------------------------------------------
+
+n = 1e6
+
+# hlz baseline
+v  = runif(n) > 0.444
+se = 1500/sqrt(12)/sqrt(240)
+mu = rexp(n, 1/55.5*se)
+null = rnorm(n, 0, 0.1)
+mu[!v] = null[!v]
+theta_hlz = mu
+
+# simulate
+dat = data.table(
+  Z = rnorm(n), theta = theta_hlz, v = v
+) %>% 
+  mutate(
+    t = theta + Z, tabs = abs(t)
+  ) %>% 
+  mutate(
+    v = factor(
+      v, levels = c(TRUE,FALSE), labels = c('True Predictor', 'False Predictor')
+    )
+  ) %>%   
+  mutate(
+    tselect = t
+  )
+
+# fit shrinkage
+datsum = dat %>% 
+  mutate(
+    tgroup = ntile(tselect,100)
+  ) %>% 
+  group_by(tgroup) %>% 
+  summarize(
+    tselect_left = min(tselect), tselect_right = max(tselect)
+    , Etselect = mean(tselect), Etheta = mean(theta), n = dplyr::n()
+    , nfalse = sum(!v)
+  )
+
+
+# fit "cdf"
+datsum = datsum %>% 
+  arrange(-Etselect) %>% 
+  mutate(
+    nfalse_cum = cumsum(nfalse)
+    , n_cum = cumsum(n)
+    , fdr_tselect_left = nfalse_cum / n_cum * 100
+  ) %>% 
+  arrange(Etselect)
+
+# find hurdles
+hurdle_05 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 5)])
+hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
+hurdle_bonf05 = qnorm(1-0.05/300/2)
+
+## plot hlz (bottom pannel) ----
+
+# settings for both panels here
+xlimnum = c(-2,6)
+nplot = 1000
+set.seed(1)
+ggplot(
+  dat[sample(1:n,nplot),]
+  , aes(x=tselect,y=theta)
+) +
+  geom_point(aes(group = v, color = v, shape = v)) +
+  scale_shape_manual(values = c(16, 1)) +
+  geom_vline(xintercept = 1.96, size = .75) +
+  geom_vline(xintercept = hurdle_bonf05, size = .75) +
+  geom_abline(aes(slope = 1, intercept = 0, linetype = "Naive Estimate (45 deg)")) +
+  geom_line(
+    data = datsum, aes(x=Etselect, y=Etheta, linetype = "Shrinkage Correction")
+  ) +
+  scale_linetype_manual(values = c(2,1)) +
+  scale_color_manual(values=c(MATRED, MATBLUE)) +
+  coord_cartesian(
+    xlim = xlimnum, ylim = c(-2,10)
+  ) +
+  annotate(geom="text", 
+           label="Classical Hurdle", 
+           x=1.95, y=8.5, vjust=-1, 
+           family = "Palatino Linotype", 
+           angle = 90
+  ) +
+  annotate(geom="text", 
+           label="HLZ Bonferroni Hurdle", 
+           x=3.7, y=8.5, vjust=-1, 
+           family = "Palatino Linotype", 
+           angle = 90
+  ) +
+  chen_theme +
+  theme(
+    legend.position = c(.25, .75)
+  ) +
+  xlab("t-statistic") +
+  ylab(TeX("True Predictability $\\theta_i$"))
+
+ggsave('../results/monte-carlo-hlz.pdf', 
+       width = 12,
+       height = 8,
+       device = cairo_pdf
+)
+
+## summarize
+dat %>% 
+  filter(tselect>2) %>% 
+  summarize(
+    mean(tselect)
+    , mean(theta)
+    , mean(!v)    
+    , mean(theta) / mean(tselect)
+  )
 
 
 
@@ -641,6 +971,10 @@ ggsave(
 
 
 # YZ Figure ====
+
+
+yzsum = fread('../data/yz_sum.csv')
+
 # set up 
 edge = seq(0,20,0.5)
 t_left = edge[1:(length(edge)-1)]
@@ -653,7 +987,7 @@ t_right2 = edge2[2:length(edge2)]
 mid2 = t_left2 + diff(edge2)/2
 
 # empirical
-F_emp = ecdf(yzsum$tstat)
+F_emp = ecdf(yzsum$tabs)
 dat_emp = data.frame(
   t_mid = mid
   , prob = (F_emp(t_right) - F_emp(t_left))
@@ -664,25 +998,9 @@ dat_emp = data.frame(
 rescalefac = mean(diff(edge))/mean(diff(edge2))
 dat_null =data.frame(
   t_mid = mid2
-  , prob = (pnorm(t_right2) - pnorm(t_left2))*rescalefac*(1-F_emp(0))
+  , prob = (pnorm(t_right2) - pnorm(t_left2))*rescalefac*2
   , group = 'null'
 ) 
-
-# fit
-sigfit = sqrt(1+3^2)
-dat_fit = data.frame(
-  t_mid = mid2
-  , prob = (pnorm(t_right2, sd = sigfit) - pnorm(t_left2, sd = sigfit))/
-    (1-pnorm(2, sd = sigfit))*rescalefac*(1-F_emp(2))
-  , group = 'fit'
-) %>% 
-  mutate(prob = if_else(t_mid > 2, prob, 0))
-
-# merge and factor group
-dat_all = rbind(dat_emp,dat_null,dat_fit) %>% 
-  mutate(
-    group = factor(group, levels = c('emp','null','fit'))
-  )
 
 
 ## plot --------------------------------------------------------------------
@@ -690,17 +1008,16 @@ groupdat = tibble(
   group = c('null', 'fit')
   , color = c(MATRED, MATBLUE)
   , labels = c(
-    TeX('Null ($\\sigma_\\mu=0$)')
-    , TeX('Fit ($\\sigma_\\mu=3$)')
+    TeX('Null (Normal(0,1))')
   )
   , linetype = c('dashed','solid')
 )
 
 
-ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
+ggplot(dat_emp, aes(x=t_mid,y=prob)) +
   geom_bar(stat='identity',position='identity',alpha=0.6, aes(fill = group)) +
   scale_fill_manual(
-    values = 'gray', labels = 'Published', name = NULL
+    values = 'gray', labels = 'Data-Mined', name = NULL
   ) +
   scale_color_manual(
     values = groupdat$color, labels = groupdat$labels, name = NULL
@@ -709,7 +1026,7 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
     values = groupdat$linetype, labels = groupdat$labels, name = NULL
   ) +
   geom_line(
-    data = dat_all %>% filter(group == 'null'), aes(color = group, linetype = group)
+    data = dat_null, aes(color = group, linetype = group)
   ) +
   chen_theme +
   theme(
@@ -719,7 +1036,7 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   xlab('t-statistic') +
   ylab('Frequency') +
   coord_cartesian(
-    xlim = c(0,8), ylim = c(0,0.4)
+    xlim = c(0,7), ylim = c(0,0.4)
   )  
 
 ggsave(
@@ -730,294 +1047,4 @@ ggsave(
 )
 
 
-
-# Lit Comp Figure ----
-## generate theta data -----
-n = 1e4
-
-# hlz
-v  = runif(n) > 0.444
-se = 1500/sqrt(12)/sqrt(240)
-mu = rexp(n, 1/55.5)
-mu[!v] = 0
-theta_hlz = mu / se
-
-dat.hlz = data.table(
-  paper = 'hlz', theta = theta_hlz
-)
-
-# cz
-mu = rt(n, 4)*45
-se = 22
-
-dat.cz = data.table(
-  paper = 'cz', theta = mu/se
-)
-
-
-#jkp
-# with pub bias ( p 44)
-tauc_alt = 29
-tauw = 21
-sigmu = (tauc_alt^2 + tauw^2)^0.5
-
-# footnote 36
-sig = (1000^2/12)^(1/2)
-T = 420
-se = sig/sqrt(T)
-sigtheta = sigmu/se
-
-dat.jkp = data.table(
-  paper = 'jkp', theta = rnorm(n,0,sigtheta)
-)
-
-# ez
-dat.ez = data.table(
-  paper = 'ez', theta = rnorm(n,0,3)
-)
-
-dat = rbind(dat.hlz,dat.cz, dat.jkp, dat.ez)
-
-## plot -----
-ggplot(dat, aes(x=theta, fill = paper)) +
-  geom_histogram(position = 'identity', alpha = 0.6, breaks = seq(-10,10,0.5)
-  ) +
-  scale_fill_manual(
-    values = c(hlz = MATBLUE,
-              cz  = MATRED,
-              jkp = "grey",
-              ez = MATYELLOW)
-    ,labels = c("Harvey, Liu and Zhu", "Chen, Zimmerman", "Jensen, Kelly and Pederson", "EZ")
-  ) +
-  coord_cartesian(
-    xlim = c(-10,10)
-  ) + 
-  chen_theme +
-  theme(
-    legend.position = c(.25, .75)
-  ) + 
-  xlab(TeX("True Predictability $\\theta_i$")) 
-
-ggsave(
-  "../results/lit-comp.pdf",
-  width = 12,
-  height = 8,
-  device = cairo_pdf
-)
-
-dat %>% 
-  filter(theta > 0) %>% 
-  group_by(paper) %>% 
-  summarize(mean(theta))
-
-
-
-# Monte Carlo Figure -----
-## simulate ez ----------------------------------------------------------------
-n = 1e6
-set.seed(456)
-
-# ez
-theta_ez = rnorm(n,0,3)
-
-# simulate
-dat = data.table(
-  Z = rnorm(n), theta = theta_ez
-) %>% 
-  mutate(
-    t = theta + Z, v = theta > 0, tabs = abs(t)
-  ) %>% 
-  mutate(
-    tselect = t
-  )
-
-# fit shrinkage
-datsum = dat %>% 
-  mutate(
-    tgroup = ntile(tselect,100)
-  ) %>% 
-  group_by(tgroup) %>% 
-  summarize(
-    tselect_left = min(tselect), tselect_right = max(tselect)
-    , Etselect = mean(tselect), Etheta = mean(theta), n = dplyr::n()
-    , nfalse = sum(!v)
-  )
-
-
-# fit "cdf"
-datsum = datsum %>% 
-  arrange(-Etselect) %>% 
-  mutate(
-    nfalse_cum = cumsum(nfalse)
-    , n_cum = cumsum(n)
-    , fdr_tselect_left = nfalse_cum / n_cum * 100
-  ) %>% 
-  arrange(Etselect)
-
-# find hurdles
-hurdle_05 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 5)])
-hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
-
-
-
-## plot ez (top panel) --------------------------------------------------------------------
-
-# settings for both panels here
-xlimnum = c(0,7)
-
-ggplot(
-  dat[1:2000,]
-  , aes(x=tselect,y=theta)) +
-  geom_point(aes(group = v, color = v, shape = v)) +
-  scale_shape_manual(values = c(16, 1)) +
-  geom_vline(xintercept = 2) +
-  geom_line(
-    data = datsum, aes(x=Etselect, y=Etheta, linetype = "label 2")
-  ) +
-  geom_abline(aes(slope = 1, intercept = 0, linetype = "label 3")) +
-  scale_linetype_manual(values = c(2,1)) +
-  scale_color_manual(values=c(MATRED, MATBLUE)) +
-
-  coord_cartesian(
-    xlim = xlimnum, ylim = c(-2,10)
-  ) +
-  annotate(geom="text", 
-           label="Label 1", 
-           x=1.95, y=-1.5, vjust=-1, 
-           family = "Palatino Linotype", 
-           angle = 90
-  ) +
-  chen_theme +
-  theme(
-    legend.position = c(.25, .75)
-  ) +
-  xlab("t-statistic") +
-  ylab(TeX("True Predictability $\\theta_i$"))
-
-ggsave('../results/monte-carlo-ez.pdf', 
-       width = 12,
-       height = 8,
-       device = cairo_pdf
-)
-
-
-## numbers for text --------------------------------------------------------
-
-dat %>% 
-  filter(tselect>2) %>% 
-  summarize(
-    mean(tselect)
-    , mean(theta)
-    , mean(theta <= 0)    
-    , mean(theta) / mean(tselect)
-  )
-
-## simulate hlz ----------------------------------------------------------------
-
-n = 1e6
-
-# hlz baseline
-v  = runif(n) > 0.444
-se = 1500/sqrt(12)/sqrt(240)
-mu = rexp(n, 1/55.5*se)
-null = rnorm(n, 0, 0.1)
-mu[!v] = null[!v]
-theta_hlz = mu
-
-# simulate
-dat = data.table(
-  Z = rnorm(n), theta = theta_hlz, v = v
-) %>% 
-  mutate(
-    t = theta + Z, tabs = abs(t)
-  ) %>% 
-  mutate(
-    tselect = t
-  )
-
-# fit shrinkage
-datsum = dat %>% 
-  mutate(
-    tgroup = ntile(tselect,100)
-  ) %>% 
-  group_by(tgroup) %>% 
-  summarize(
-    tselect_left = min(tselect), tselect_right = max(tselect)
-    , Etselect = mean(tselect), Etheta = mean(theta), n = dplyr::n()
-    , nfalse = sum(!v)
-  )
-
-
-# fit "cdf"
-datsum = datsum %>% 
-  arrange(-Etselect) %>% 
-  mutate(
-    nfalse_cum = cumsum(nfalse)
-    , n_cum = cumsum(n)
-    , fdr_tselect_left = nfalse_cum / n_cum * 100
-  ) %>% 
-  arrange(Etselect)
-
-# find hurdles
-hurdle_05 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 5)])
-hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
-hurdle_bonf05 = qnorm(1-0.05/300/2)
-
-## plot hlz (bottom pannel) ----
-
-# settings for both panels here
-xlimnum = c(-2,6)
-nplot = 1000
-
-ggplot(
-  dat[sample(1:n,nplot),]
-  , aes(x=tselect,y=theta)
-  ) +
-  geom_point(aes(group = v, color = v, shape = v)) +
-  scale_shape_manual(values = c(16, 1)) +
-  geom_vline(xintercept = 2, size = .75) +
-  geom_vline(xintercept = hurdle_bonf05, size = .75) +
-  geom_abline(aes(slope = 1, intercept = 0, linetype = "label 4")) +
-  geom_line(
-    data = datsum, aes(x=Etselect, y=Etheta, linetype = "label 3")
-  ) +
-  scale_linetype_manual(values = c(2,1)) +
-  scale_color_manual(values=c(MATRED, MATBLUE)) +
-  coord_cartesian(
-    xlim = xlimnum, ylim = c(-2,10)
-  ) +
-  annotate(geom="text", 
-           label="Label 1", 
-           x=1.95, y=-1.5, vjust=-1, 
-           family = "Palatino Linotype", 
-           angle = 90
-  ) +
-  annotate(geom="text", 
-           label="Label 2", 
-           x=3.7, y=-1.5, vjust=-1, 
-           family = "Palatino Linotype", 
-           angle = 90
-  ) +
-  chen_theme +
-  theme(
-    legend.position = c(.25, .75)
-  ) +
-  xlab("t-statistic") +
-  ylab(TeX("True Predictability $\\theta_i$"))
-
-ggsave('../results/monte-carlo-hlz.pdf', 
-       width = 12,
-       height = 8,
-       device = cairo_pdf
-)
-
-## summarize
-dat %>% 
-  filter(tselect>2) %>% 
-  summarize(
-    mean(tselect)
-    , mean(theta)
-    , mean(!v)    
-    , mean(theta) / mean(tselect)
-  )
 

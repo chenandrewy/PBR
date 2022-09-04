@@ -104,8 +104,9 @@ if (!file.exists('../data/yz_sum.csv')){
     summarize(
       rbar = mean(ret)
       , vol = sd(ret)
-      , tstat = mean(ret)/sd(ret)*sqrt(dplyr::n()) %>% abs()
+      , tstat = mean(ret)/sd(ret)*sqrt(dplyr::n())
+      , tabs = abs(tstat)
     ) %>%
-    mutate(tstat = abs(tstat)) %>%
     write.csv(.,file = "../data/yz_sum.csv")
+  
 }
