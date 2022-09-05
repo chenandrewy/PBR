@@ -58,7 +58,8 @@ cz_alt = rbind(
 
 
 ## CZRET ====
-czret = cz_all %>%                                         
+czret = cz_all %>%         
+  filter(port == 'LS', !is.na(ret)) %>% 
   left_join(signaldoc) %>% 
   mutate(
     samptype = case_when(
@@ -97,7 +98,7 @@ czsum = czret %>%
 
 # Liquidity Screen bars -------------------------------------------------------
 
-rbarbar = czsum %>% filter(samptype == 'in-samp') %>% 
+rbarbarbase = czsum %>% filter(samptype == 'in-samp') %>% 
   ungroup() %>% 
   summarize(rbarbar = mean(rbar)) %>% 
   pull(rbarbar)
@@ -107,7 +108,7 @@ group_signal_sum = cz_alt %>%
   filter(samptype == 'in-samp') %>% 
   group_by(group, signalname) %>% 
   summarize(
-    rbar = mean(ret)/rbarbar*100
+    rbar = mean(ret)/rbarbarbase*100
   ) %>% 
   mutate(
     group = factor(group)
@@ -116,7 +117,7 @@ group_signal_sum = cz_alt %>%
     czsum %>% 
       filter(samptype == 'in-samp') %>% 
       mutate(
-        group = 'base', rbar = rbar / rbarbar * 100
+        group = 'base', rbar = rbar / rbarbarbase * 100
       ) %>% select(group, signalname, rbar)
   )
 
@@ -126,14 +127,24 @@ groupsum = group_signal_sum %>%
     rbarbar = mean(rbar)
     , sd = sd(rbar)
     , se = sd/sqrt(dplyr::n())
-  ) 
+  ) %>% 
+  filter(group != 'holdper06') %>%   
+  mutate(
+    group = factor(
+      group
+      , levels = c('base','holdper12','mescreen','VWforce')
+      , labels = c(
+        'Original Implementation', 'Annual Rebalancing','ME > NYSE 20 Pct','Value Weighted'
+      )
+    )
+  )
   
-
+# plot
 groupsum %>% 
   ggplot(aes(x = group, y = rbarbar)) +
-  geom_bar(stat = 'identity', fill = 'grey') + 
+  geom_bar(stat = 'identity', fill = 'grey', color = 'black') + 
   geom_errorbar(
-    aes(ymin = rbarbar-se, ymax = rbarbar + se)
+    aes(ymin = rbarbar-2*se, ymax = rbarbar + 2*se), width = 0.2
   ) +
   chen_theme +
   scale_y_continuous(
@@ -142,15 +153,23 @@ groupsum %>%
     (~./1,  breaks = seq(0,100,20)
       )
   ) +
-  coord_cartesian(ylim = c(40, 110))
+  coord_cartesian(ylim = c(5, 110)) +
+  scale_x_discrete(labels = function(x) stringr::str_wrap(x, width = 12)) +
+  ylab('Grand Mean Return \n (bps Monthly)') +
+  theme(
+    axis.title.x = element_blank()
+  )
 
 
+ggsave('../results/liq_screen.pdf', width = 8, height = 5, scale = 1.3,  device = cairo_pdf )
 
 
 
 # Sample Time Returns ----------------------------------------------------------------
 
-rollmonths = 12*3
+rollmonths = 12*5
+
+rescale = 0.67
 
 # find rolling stats
 tempret = czret %>% 
@@ -163,7 +182,7 @@ rbar_samp_time = tempret %>%
   arrange(samp_time) %>% 
   group_by(samp_time) %>% 
   summarize(
-    rbar = mean(ret)*100/.67, nsignal = dplyr::n()
+    rbar = mean(ret)*100/rescale, nsignal = dplyr::n()
   ) %>% 
   mutate(
     roll_rbar = rollmean(rbar, k = rollmonths, fill = NA, align = 'right')
@@ -171,20 +190,64 @@ rbar_samp_time = tempret %>%
 
 
 # big pic stats
-czgrand = czret %>% group_by(samptype) %>% summarize(rbarbar = mean(ret)/.67)
+czgrand = czret %>% group_by(samptype) %>% summarize(rbarbar = mean(ret)*100/rescale)
+
+guidedat = tibble(
+  time = seq(-50,50,0.02)
+) %>% 
+  mutate(
+    rbar = case_when(
+      time < 0 ~ 100
+      , time < 5 ~ 100 - 12
+      , time >= 5 ~ czgrand %>% filter(samptype == 'post-pub') %>% pull(rbarbar)
+    )
+  )
 
 
 ggplot(rbar_samp_time, aes(x = samp_time, y = roll_rbar)) +
   geom_line() +
   coord_cartesian(
-    xlim = c(-5, 20), ylim = c(-0, 130)
+    xlim = c(-10, 20), ylim = c(-0, 120)
   ) +
+  scale_y_continuous(breaks = seq(0,180,20)) +
+  scale_x_continuous(breaks = seq(-50,25,5)) +  
   geom_hline(yintercept = czgrand %>% filter(samptype == 'in-samp') %>% pull(rbarbar) ) +
   geom_hline(yintercept = czgrand %>% filter(samptype == 'post-pub') %>% pull(rbarbar) ) +
-  scale_y_continuous(breaks = seq(20,100,20)) +
-  scale_x_continuous(breaks = seq(-12,25,3))
-  
+  geom_hline(yintercept = 88) +
+  # geom_line(dat = guidedat, aes(x= time, y = rbar)) +
+  geom_vline(xintercept = 0) +
+  chen_theme +
+  # annotate(geom="text",
+  #          label=TeX("In-Sample Mean")
+  #          , x=10, y=100, vjust=-1,
+  #          family = "Palatino Linotype"
+  # ) +
+  annotate(geom="text",
+           label=TeX("Publication Bias")
+           , x=-5, y=87, vjust=-1, family = "Palatino Linotype"
+  ) +      
+  annotate('segment', x=-1, xend = -1, y = 100, yend = 90
+           , arrow = arrow(length = unit(0.3,'cm')), size = 0.5) +  
+  # annotate(geom="text",
+  #          label=TeX("Post-Pub Mean")
+  #          , x=10, y=40, vjust=-1,
+  #          family = "Palatino Linotype"
+  # ) +
+  annotate(geom="text",
+           label=TeX('\\Delta E(Return)'), x=2, y=60, vjust=-1, 
+           family = "Palatino Linotype"
+  ) +
+  annotate('segment', x=5, xend = 5, y = 85, yend = 54
+           , arrow = arrow(length = unit(0.3,'cm')), size = 0.5) +    
+  ylab('Trailing 5 Years \n Mean Return (bps p.m.)') +
+  xlab('Years Since Original Sample Ended') +
+  theme(
+    axis.title.y = element_text(size = 20)
+    , axis.title.x = element_text(size = 20)
+  )
 
+  
+ggsave('../results/roll_rbar.pdf', height = 4, width = 8, scale = 1, device = cairo_pdf)
 
 
 
