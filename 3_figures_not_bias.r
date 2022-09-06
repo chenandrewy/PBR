@@ -165,9 +165,18 @@ ggsave('../results/liq_screen.pdf', width = 8, height = 5, scale = 1.3,  device 
 
 
 
+## Numbers for paper -------------------------------------------------------
+
+signaldoc %>% 
+  filter(Cat.Signal == 'Predictor') %>% 
+  filter(!is.na(`Portfolio Period`)) %>% 
+  pull(`Portfolio Period`) %>% 
+  quantile()
+
+
 # Sample Time Returns ----------------------------------------------------------------
 
-rollmonths = 12*5
+rollmonths = 12*3
 
 rescale = 0.67
 
@@ -205,51 +214,72 @@ guidedat = tibble(
 
 
 ggplot(rbar_samp_time, aes(x = samp_time, y = roll_rbar)) +
+  geom_vline(xintercept = 0) +
+  geom_vline(xintercept = 3, linetype = 'dashed') +  
   geom_line() +
   coord_cartesian(
     xlim = c(-10, 20), ylim = c(-0, 120)
   ) +
   scale_y_continuous(breaks = seq(0,180,20)) +
   scale_x_continuous(breaks = seq(-50,25,5)) +  
-  geom_hline(yintercept = czgrand %>% filter(samptype == 'in-samp') %>% pull(rbarbar) ) +
-  geom_hline(yintercept = czgrand %>% filter(samptype == 'post-pub') %>% pull(rbarbar) ) +
-  geom_hline(yintercept = 88) +
+  geom_hline(
+    yintercept = czgrand %>% filter(samptype == 'in-samp') %>% pull(rbarbar) 
+    , color = MATBLUE
+  ) +
+  geom_hline(
+    yintercept = czgrand %>% filter(samptype == 'post-pub') %>% pull(rbarbar) 
+    , color = MATRED, linestyle = 'dotted'
+  ) +
+  geom_hline(
+    yintercept = 88
+    , color = MATYELLOW
+  ) +
   # geom_line(dat = guidedat, aes(x= time, y = rbar)) +
-  geom_vline(xintercept = 0) +
   chen_theme +
-  # annotate(geom="text",
-  #          label=TeX("In-Sample Mean")
-  #          , x=10, y=100, vjust=-1,
-  #          family = "Palatino Linotype"
-  # ) +
   annotate(geom="text",
            label=TeX("Publication Bias")
-           , x=-5, y=87, vjust=-1, family = "Palatino Linotype"
+           , x=-8, y=87, vjust=-1, family = "Palatino Linotype"
   ) +      
-  annotate('segment', x=-1, xend = -1, y = 100, yend = 90
+  annotate('segment', x=-5, xend = -5, y = 98, yend = 90
            , arrow = arrow(length = unit(0.3,'cm')), size = 0.5) +  
-  # annotate(geom="text",
-  #          label=TeX("Post-Pub Mean")
-  #          , x=10, y=40, vjust=-1,
-  #          family = "Palatino Linotype"
-  # ) +
   annotate(geom="text",
-           label=TeX('\\Delta E(Return)'), x=2, y=60, vjust=-1, 
+           label=TeX('\\Delta Expected Return'), x=-4.5, y=60, vjust=-1, 
            family = "Palatino Linotype"
   ) +
-  annotate('segment', x=5, xend = 5, y = 85, yend = 54
+  annotate('segment', x=-1, xend = -1, y = 85, yend = 54
            , arrow = arrow(length = unit(0.3,'cm')), size = 0.5) +    
-  ylab('Trailing 5 Years \n Mean Return (bps p.m.)') +
+  ylab('Trailing 3 Years \n Mean Return (bps p.m.)') +
   xlab('Years Since Original Sample Ended') +
   theme(
-    axis.title.y = element_text(size = 20)
-    , axis.title.x = element_text(size = 20)
-  )
+    axis.title.y = element_text(size = 18)
+    , axis.title.x = element_text(size = 18)
+  ) 
 
   
 ggsave('../results/roll_rbar.pdf', height = 4, width = 8, scale = 1, device = cairo_pdf)
 
 
+
+## numbers for paper -------------------------------------------------------
+
+
+czret %>% 
+  group_by(signalname) %>% 
+  summarize(
+    acor1 = cor(ret, dplyr::lag(ret,1), use = 'pairwise.complete.obs')
+    , acor2 = cor(ret, dplyr::lag(ret,2), use = 'pairwise.complete.obs')
+    , acor3 = cor(ret, dplyr::lag(ret,3), use = 'pairwise.complete.obs')    
+    , acor4 = cor(ret, dplyr::lag(ret,4), use = 'pairwise.complete.obs')        
+  ) %>% 
+  summarize(
+    across(-'signalname', ~ mean(.x, na.rm=T))
+  )
+
+signaldoc %>% 
+  mutate(between = pubdate - sampend) %>% 
+  summarize(
+    mean(between)/365
+  )
 
 # Gregorian Time Returns ----------------------------------------------------------------
 

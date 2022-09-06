@@ -14,7 +14,6 @@ library(nlme)
 library(stargazer)
 library(lubridate)
 library(latex2exp)
-library(Cairo)
 library(xtable) 
 library(haven)
 
@@ -47,11 +46,15 @@ chen_theme = theme_minimal() +
   ) 
 
 ## Import/Prepare Data ====
+
+# read from disc
 cz_all = fread("../data/PredictorPortsFull.csv")
 signaldoc = fread('../data/SignalDoc.csv')
+yzsum = fread('../data/yz_sum.csv')
 
 
-signaldoc = signaldoc %>% rename(signalname = Acronym)
+signaldoc = signaldoc %>% rename(signalname = Acronym) %>% 
+  select(-c(Notes,`Detailed Definition`))
 
 # czret (monthly returns)
 signaldoc_dates = signaldoc %>% 
@@ -113,23 +116,10 @@ fit_OP = signaldoc %>%
     `Signal Rep Quality` %in% c('1_good','2_fair')
     , grepl('port', `Test in OP`)
     , `Predictability in OP` != 'indirect'
+    , `Test in OP` %in% c('port sort', 'LS port') # these are raw long-shorts
   ) %>% 
-  mutate(
-    adjusted = if_else(
-      `Test in OP` %in% c('port sort', 'LS port') # these are raw long-shorts
-      , catname[1]
-      , catname[2]
-    )
-    , adjusted = if_else(
-      grepl('nonstandard', `Evidence Summary`)
-      , catname[3], adjusted
-    )
-    , adjusted = factor(
-      adjusted
-      , levels = catname
-    )
-  ) %>% 
-  select(signalname, starts_with('tstat'), adjusted)
+  select(signalname, tstat_OP) %>% 
+  filter(!is.na(tstat_OP))
 
 fitcomp = czsum %>% 
   rename(tstat_CZ = tstat) %>% 
@@ -144,10 +134,8 @@ fitcomp = czsum %>%
 
 
 # plot
-legname = 'Original Method'
 breaks = c(2,4, 6, 8, 12,  16)
 fitcomp %>% 
-  filter(adjusted == 'raw') %>% 
   ggplot(aes(x=tstat_OP, y = tstat_CZ)) +
   geom_point(size=4, color = MATBLUE) +
   chen_theme +
@@ -454,9 +442,9 @@ groupdat = tibble(
   group = c('null', 'miss', 'fit')
   , color = c(MATRED, MATYELLOW, MATBLUE)
   , labels = c(
-    TeX('$\\sigma_\\mu=0$ (Null)')
-    , TeX('$\\sigma_\\mu=1.5$')    
-    , TeX('$\\sigma_\\mu=3$ (Fit)')
+    TeX('Var($\\theta_i$) = 0 (Null)')
+    , TeX('Var($\\theta_i$) = $1.5^2$')    
+    , TeX('Var($\\theta_i$) = $3.0^2$ (Fit)')
   )
   , linetype = c('dashed','dotdash','solid')
 )
@@ -578,42 +566,7 @@ ggplot(dat, aes(x=theta, linetype = paper, color = paper)) +
   theme(
     legend.position = c(.25, .75)
   ) + 
-  xlab(TeX("True Predictability $\\theta_i$"))  
-
-ggsave(
-  "../results/lit-comp.pdf",
-  width = 12,
-  height = 8,
-  device = cairo_pdf
-)
-
-
-## plot -----
-ggplot(dat, aes(x=theta, fill = paper)) +
-  geom_density(
-    position = 'identity', alpha = 0.6, breaks = seq(-10,10,0.5)
-  ) +
-  scale_fill_manual(
-    values = c(hlz = MATBLUE,
-               cz  = MATRED,
-               jkp = "grey",
-               ez = MATYELLOW)
-    ,labels = 
-      c(
-        "Harvey, Liu and Zhu 2016"
-        , "Chen, Zimmerman 2020"
-        , "Jensen, Kelly and Pederson Forth"
-        , TeX("Simple $\\theta_i \\sim$ Normal")
-        )
-  ) +
-  coord_cartesian(
-    xlim = c(-10,10)
-  ) + 
-  chen_theme +
-  theme(
-    legend.position = c(.25, .75)
-  ) + 
-  xlab(TeX("True Predictability $\\theta_i$")) 
+  xlab(TeX("Standardized Expected Return ($\\theta_i$)"))  
 
 ggsave(
   "../results/lit-comp.pdf",
@@ -680,7 +633,6 @@ hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
 ## plot ez (top panel) --------------------------------------------------------------------
 
 # settings for both panels here
-xlimnum = c(0,7)
 
 set.seed(89)
 iselect = sample(1:n, 1000)
@@ -689,30 +641,29 @@ iselect = sample(1:n, 1000)
 ggplot(
   dat[iselect,]
   , aes(x=tselect,y=theta)) +
-  geom_point(aes(group = v, color = v, shape = v)) +
+  geom_point(aes(group = v, color = v, shape = v), size = 2.5) +
   scale_shape_manual(values = c(16, 1)) +
-  geom_vline(xintercept = 1.96) +
   geom_line(
     data = datsum, aes(x=Etselect, y=Etheta, linetype = "Shrinkage Correction")
   ) +
   geom_abline(aes(slope = 1, intercept = 0, linetype = "Naive Estimate (45 deg)")) +
-  scale_linetype_manual(values = c(2,1)) +
-  scale_color_manual(values=c(MATRED, MATBLUE)) +
+  scale_linetype_manual(values = c(1,2)) +
+  scale_color_manual(values=c(MATBLUE, MATRED)) +
   coord_cartesian(
-    xlim = xlimnum, ylim = c(-2,10)
+    xlim = c(0,7), ylim = c(-2,8)
   ) +
+  geom_vline(xintercept = 1.96) +  
   annotate(geom="text",
            label="Classical Hurdle",
-           x=1.95, y=-1.5, vjust=-1,
-           family = "Palatino Linotype",
-           angle = 90
+           x=1.95, y=6.5, vjust=-1,
+           family = "Palatino Linotype", angle = 90, size = 6, color = 'black'
   ) +
   chen_theme +
   theme(
-    legend.position = c(.25, .75)
+    legend.position = c(.8, .25)
   ) +
-  xlab("t-statistic") +
-  ylab(TeX("True Predictability $\\theta_i$"))
+  xlab(TeX("t-statistic $\\t_i$")) +
+  ylab(TeX("Standardized Expected Return $\\theta_i$"))
 
 ggsave('../results/monte-carlo-ez.pdf', 
        width = 12,
@@ -731,6 +682,11 @@ dat %>%
     , mean(theta <= 0)    
     , mean(theta) / mean(tselect)
   )
+
+# for fdr approx
+1-pnorm(2, 0, sqrt(10))
+
+0.025/(1-pnorm(2, 0, sqrt(10))) * 0.5
 
 # Monte Carlo: HLZ -----
 
@@ -759,7 +715,7 @@ dat = data.table(
     )
   ) %>%   
   mutate(
-    tselect = t
+    tselect = tabs
   )
 
 # fit shrinkage
@@ -771,8 +727,8 @@ datsum = dat %>%
   summarize(
     tselect_left = min(tselect), tselect_right = max(tselect)
     , Etselect = mean(tselect), Etheta = mean(theta), n = dplyr::n()
-    , nfalse = sum(!v)
-  )
+    , nfalse = sum(v == 'False Predictor') 
+  ) 
 
 
 # fit "cdf"
@@ -790,47 +746,53 @@ hurdle_05 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 5)])
 hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
 hurdle_bonf05 = qnorm(1-0.05/300/2)
 
-## plot hlz (bottom pannel) ----
+## plot hlz ----
 
 # settings for both panels here
-xlimnum = c(-2,6)
 nplot = 1000
-set.seed(1)
+set.seed(2)
 ggplot(
   dat[sample(1:n,nplot),]
   , aes(x=tselect,y=theta)
 ) +
-  geom_point(aes(group = v, color = v, shape = v)) +
+  geom_point(aes(group = v, color = v, shape = v), size = 2.5) +
   scale_shape_manual(values = c(16, 1)) +
   geom_vline(xintercept = 1.96, size = .75) +
-  geom_vline(xintercept = hurdle_bonf05, size = .75) +
-  geom_abline(aes(slope = 1, intercept = 0, linetype = "Naive Estimate (45 deg)")) +
+  geom_vline(xintercept = hurdle_05, size = 0.75, color = MATBLUE) +    
+  geom_vline(xintercept = hurdle_01, size = .75, color = MATRED) +
+  geom_abline(aes(slope = 1, intercept = 0, linetype = "Naive (45 deg)")) +
   geom_line(
-    data = datsum, aes(x=Etselect, y=Etheta, linetype = "Shrinkage Correction")
+    data = datsum, aes(x=Etselect, y=Etheta, linetype = "Shrinkage")
   ) +
-  scale_linetype_manual(values = c(2,1)) +
-  scale_color_manual(values=c(MATRED, MATBLUE)) +
+  scale_linetype_manual(values = c(1,2)) +
+  scale_color_manual(values=c(MATBLUE, MATRED)) +
   coord_cartesian(
-    xlim = xlimnum, ylim = c(-2,10)
+    xlim = c(-0.5,6), ylim = c(-2,10)
+  ) +
+  scale_x_continuous(
+    breaks = seq(-10,10,1)
   ) +
   annotate(geom="text", 
            label="Classical Hurdle", 
            x=1.95, y=8.5, vjust=-1, 
-           family = "Palatino Linotype", 
-           angle = 90
+           family = "Palatino Linotype", angle = 90, size = 6, color = 'black'
   ) +
   annotate(geom="text", 
-           label="HLZ Bonferroni Hurdle", 
-           x=3.7, y=8.5, vjust=-1, 
-           family = "Palatino Linotype", 
-           angle = 90
+           label="FDR = 5%", 
+           x=23.5/10, y=8.5, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = 6, color = MATBLUE
+  ) +  
+  annotate(geom="text", 
+           label="FDR = 1%", 
+           x=3, y=8.5, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = 6, color = MATRED
   ) +
   chen_theme +
   theme(
-    legend.position = c(.25, .75)
+    legend.position = c(.15, .75)
   ) +
-  xlab("t-statistic") +
-  ylab(TeX("True Predictability $\\theta_i$"))
+  xlab(TeX("Absolute t-statistic $|\\t_i|$")) +
+  ylab(TeX("Standardized Expected Return $\\theta_i$"))
 
 ggsave('../results/monte-carlo-hlz.pdf', 
        width = 12,
@@ -838,16 +800,40 @@ ggsave('../results/monte-carlo-hlz.pdf',
        device = cairo_pdf
 )
 
-## summarize
+## numbers for text --------------------------------------------------------
+
 dat %>% 
-  filter(tselect>2) %>% 
+  filter(tselect>1.96) %>% 
   summarize(
     mean(tselect)
     , mean(theta)
-    , mean(!v)    
+    , mean(v == 'False Predictor')    
     , mean(theta) / mean(tselect)
   )
 
+
+dat %>% 
+  filter(t>1.96) %>% 
+  summarize(
+    mean(t)
+    , mean(theta)
+    , mean(v == 'False Predictor')    
+    , mean(theta) / mean(t)
+  )
+
+
+dat %>% 
+  filter(tselect > 1.96) %>% 
+  summarize(
+    mean(tselect < hurdle_01)
+  )
+
+
+dat %>% 
+  filter(tselect > hurdle_05) %>% 
+  summarize(
+    mean(tselect < hurdle_01)
+  )
 
 
 # Shrinkage Figure ----
@@ -972,9 +958,6 @@ ggsave(
 
 # YZ Figure ====
 
-
-yzsum = fread('../data/yz_sum.csv')
-
 # set up 
 edge = seq(0,20,0.5)
 t_left = edge[1:(length(edge)-1)]
@@ -1033,7 +1016,7 @@ ggplot(dat_emp, aes(x=t_mid,y=prob)) +
     legend.position = c(75,75)/100
     # , legend.margin = margin(t = -15, r = 20, b = 0, l = 5)
   )  +
-  xlab('t-statistic') +
+  xlab(TeX('Absolute t-statistic $|t_i|$')) +
   ylab('Frequency') +
   coord_cartesian(
     xlim = c(0,7), ylim = c(0,0.4)
@@ -1043,6 +1026,7 @@ ggsave(
   "../results/yan-zheng.pdf",
   width = 12,
   height = 8,
+  scale = 0.9,
   device = cairo_pdf
 )
 
