@@ -53,22 +53,19 @@ signaldoc = fread('../data/SignalDoc.csv')
 yzsum = fread('../data/yz_sum.csv')
 
 
-signaldoc = signaldoc %>% rename(signalname = Acronym) %>% 
-  select(-c(Notes,`Detailed Definition`))
-
-# czret (monthly returns)
-signaldoc_dates = signaldoc %>% 
+signaldoc = fread('../data/SignalDoc.csv') %>% 
+  rename(signalname = Acronym) %>% 
   mutate(
     pubdate = as.Date(paste0(Year, '-12-31'))
     , sampend = as.Date(paste0(SampleEndYear, '-12-31'))
     , sampstart = as.Date(paste0(SampleStartYear, '-01-01'))
   ) %>% 
-  arrange(signalname) %>% 
-  select(signalname, pubdate, sampend, sampstart)
+  select(-c(Notes,`Detailed Definition`))
 
+# czret (monthly returns)
 czret = cz_all %>%                                         
   filter(!is.na(ret), port == 'LS') %>%                                                           
-  left_join(signaldoc_dates) %>% 
+  left_join(signaldoc) %>% 
   mutate(
     samptype = case_when(
       (date >= sampstart) & (date <= sampend) ~ 'in-samp'
@@ -98,6 +95,32 @@ czretmat = czret %>%
   pivot_wider(names_from = signalname, values_from = ret) %>%
   select(-date) %>% 
   as.matrix()
+
+# for liquidity screens
+cz_alt = rbind(
+  fread('../data/PredictorAltPorts_HoldPer_12.csv') %>% 
+    mutate(group = 'holdper12')
+  ,   fread('../data/PredictorAltPorts_HoldPer_6.csv') %>% 
+    mutate(group = 'holdper06')
+  , fread('../data/PredictorAltPorts_LiqScreen_ME_gt_NYSE20pct.csv') %>% 
+    mutate(group = 'mescreen')  
+  ,   fread('../data/PredictorAltPorts_LiqScreen_VWforce.csv') %>% 
+    mutate(group = 'VWforce')
+) %>% 
+  filter(port == 'LS', !is.na(ret)) %>% 
+  select(group, signalname, date, ret) %>% 
+  left_join(signaldoc) %>% 
+  mutate(
+    samptype = case_when(
+      (date >= sampstart) & (date <= sampend) ~ 'in-samp'
+      , (date > sampend) & (date <= sampend %m+% months(36)) ~ 'out-of-samp'
+      , (date > pubdate) ~ 'post-pub'
+      , TRUE ~ 'NA_character_'
+    )
+  )
+
+
+
 
 
 # Replication Figure ------------------------------------------
@@ -160,169 +183,6 @@ ggsave(
 
 
 
-# Generate McLean-Pontiff bootstrapped mean returns figure ====
-## bootstrap mean distributions ====
-set.seed(6)
-nboot = 500 
-
-bootfun = function(sampname){
-  # make wide dataset, use NA if not correct sample
-  wide_is = czret %>%
-    filter(samptype == sampname) %>% 
-    select(c(date, ret, signalname)) %>%
-    pivot_wider(
-      names_from = "signalname", values_from = "ret"
-    ) %>% 
-    select(-date) %>% 
-    as.matrix()
-  
-  # make array that only has enough signals in each month (10)
-  tgood = rowSums(!is.na(wide_is), na.rm=T) > 10
-  mat = wide_is[tgood, ]
-  T = dim(mat)[1]
-  
-  # bootstrap pooled mean
-  rboot = rep(NA_real_, nboot)
-  for (i in 1:nboot){
-    tempt = sample(1:T, replace = T)
-    rboot[i] = mat[tempt,]  %>% as.vector %>% mean(na.rm=T)
-  }
-  return(rboot)
-}
-
-# bootstrap for each sample type
-rboot1 = bootfun('in-samp')
-rboot2 = bootfun('out-of-samp')
-
-mean_insamp = mean(czsum$rbar[czsum$samptype == "in-samp"])
-
-mean_oos = mean(czsum$rbar[czsum$samptype == "out-of-samp"])
-
-
-# compile and plot
-bootdat = data.frame(
-  pooled_mean_ret = rboot1, samptype = 'in-samp' 
-) %>% 
-  rbind(
-    data.frame(
-      pooled_mean_ret = rboot2, samptype = 'out-of-samp' 
-    )
-  ) %>% 
-  mutate(
-    mean_ret_scaled = pooled_mean_ret/mean_insamp
-  )
-
-## plot --------------------------------------------------------------
-bootdat %>% 
-  mutate(retplot = mean_ret_scaled*100) %>% 
-  ggplot(aes(x=retplot, fill=samptype)) +
-  geom_histogram(alpha = 0.8
-                 , position = 'identity'
-                 , breaks = seq(0,125, 5)
-                 , aes(y=..density..)
-  ) +
-  chen_theme + 
-  theme(
-    legend.position = c(.25, .8)
-  ) + 
-  scale_fill_manual(
-    labels=c('Original Sample', 'Years 1-3 Post Sample'),
-    values = c(MATBLUE, 'grey')
-  ) +
-  labs(x='Pooled Mean Return (bps monthly)', y='Density') +
-  geom_vline(xintercept = 0) +
-  scale_x_continuous(breaks = seq(0,125,25))+
-  geom_vline(xintercept = mean_oos/mean_insamp*100)
-
-ggsave(
-  "../results/MPrep_scaled.pdf",
-  width = 12,
-  height = 8,
-  device = cairo_pdf
-)
-
-
-
-
-
-# T Too Big Table ---------------------------------------------------------
-## settings ====
-t_left = c(seq(2,9,1), Inf)
-sig_pct = pnorm(-t_left)*200
-nboot = 100
-
-## bootstrap ====
-ndatemin = 240
-
-# residuals
-czresid = czret %>% 
-  group_by(signalname) %>% 
-  mutate(
-    e = as.vector(scale(ret, center = T, scale = F))
-  ) %>% 
-  select(signalname, date, e) %>% 
-  pivot_wider(names_from = signalname, values_from = e) %>% 
-  select(-date) %>% 
-  as.matrix()
-
-boot_once = function(){
-  dateselect = sample(1:dim(czresid)[1], ndatemax, replace = T)
-  
-  # draw returns, clustered by month
-  eboot = czresid[dateselect, ]
-  
-  # summarize each predictor
-  ebar = apply(eboot, 2, mean, na.rm=T)
-  vol  = apply(eboot, 2, sd, na.rm=T)
-  ndate  = apply(eboot, 2, function(x) sum(!is.na(x)))
-  tstat = ebar/vol*sqrt(ndate)
-  
-  # remove if not enough observations
-  tstat2 = tstat[ndate > ndatemin]
-  
-  # summarize across predictors
-  F_emp = ecdf(abs(tstat2))
-  
-  temp = data.table(t_left, pval = 1-F_emp(t_left))
-  return(temp)
-}
-
-
-# bootstrap!!
-ndatemax = dim(czresid)[1]
-## should this be: dim(czresid)[1]
-tic = Sys.time()
-set.seed(1057)
-bootdat = rbindlist(lapply(1:nboot, function(x) boot_once()))
-toc = Sys.time()
-toc - tic
-
-# summarize across bootstraps
-bootsum = bootdat %>% 
-  group_by(t_left) %>% 
-  summarize(
-    pval = mean(pval)
-  )
-
-## make table ====
-Fcz = ecdf(abs(czsum$tstat[czsum$samptype == "in-samp"]))
-Fyz = ecdf(abs(yzsum$tstat))
-Ncz = length(czsum$tstat[czsum$samptype == "in-samp"])
-Nyz = length(yzsum$tstat)
-
-tab_long = data.frame(
-  t_left
-  , Count_cz = Ncz*(1-Fcz(t_left))
-  , Count_yz = Nyz*(1-Fyz(t_left))
-  , pct_cz = (1-Fcz(t_left))*100
-  , pct_yz = (1-Fyz(t_left))*100
-  , sig_pct
-  , sig_boot = bootsum$pval*100
-)
-
-tab_wide = tab_long %>% t()
-
-stargazer(tab_wide, type = "latex", title = "Results", align=TRUE)
 
 
 
@@ -331,6 +191,14 @@ stargazer(tab_wide, type = "latex", title = "Results", align=TRUE)
 
 # Correlation Figures ------------------------------------------------------
 ## correlation dist ====
+
+czret %>% 
+  group_by(signalname) %>% 
+  summarize(
+    
+  )
+  
+
 cormat = cor(czretmat, use = 'pairwise.complete.obs')
 corlong = cormat[lower.tri(cormat)]
 
@@ -551,7 +419,7 @@ groupdat = tibble(
 
 ggplot(dat, aes(x=theta, linetype = paper, color = paper)) +
   geom_density(
-    position = 'identity', alpha = 0.6, adjust = 2, size = 1
+    position = 'identity', alpha = 0.6, adjust = 1.2, size = 1
   ) +
   coord_cartesian(
     xlim = c(-10,10), ylim = c(0, 0.4)
@@ -830,10 +698,15 @@ dat %>%
 
 
 dat %>% 
-  filter(tselect > hurdle_05) %>% 
+  filter(tselect > 2,  tselect < hurdle_01) %>% 
   summarize(
-    mean(tselect < hurdle_01)
+    mean(t)
+    , mean(theta)
+    , mean(v == 'False Predictor')    
+    , mean(theta) / mean(t)
   )
+
+
 
 
 # Shrinkage Figure ----
@@ -956,6 +829,225 @@ ggsave(
 )
 
 
+
+
+
+# Liquidity Screen bars -------------------------------------------------------
+
+rbarbarbase = czsum %>% filter(samptype == 'in-samp') %>% 
+  ungroup() %>% 
+  summarize(rbarbar = mean(rbar)) %>% 
+  pull(rbarbar)
+
+
+group_signal_sum = cz_alt %>% 
+  filter(samptype == 'in-samp') %>% 
+  group_by(group, signalname) %>% 
+  summarize(
+    rbar = mean(ret)/rbarbarbase*100
+  ) %>% 
+  mutate(
+    group = factor(group)
+  ) %>% 
+  rbind(
+    czsum %>% 
+      filter(samptype == 'in-samp') %>% 
+      mutate(
+        group = 'base', rbar = rbar / rbarbarbase * 100
+      ) %>% select(group, signalname, rbar)
+  )
+
+groupsum = group_signal_sum %>% 
+  group_by(group) %>% 
+  summarize(
+    rbarbar = mean(rbar)
+    , sd = sd(rbar)
+    , se = sd/sqrt(dplyr::n())
+  ) %>% 
+  filter(group != 'holdper06') %>%   
+  mutate(
+    group = factor(
+      group
+      , levels = c('base','holdper12','mescreen','VWforce')
+      , labels = c(
+        'Original Implementation', 'Annual Rebalancing','ME > NYSE 20 Pct','Value Weighted'
+      )
+    )
+  )
+
+# plot
+groupsum %>% 
+  ggplot(aes(x = group, y = rbarbar)) +
+  geom_bar(stat = 'identity', fill = 'grey', color = 'black') + 
+  geom_errorbar(
+    aes(ymin = rbarbar-2*se, ymax = rbarbar + 2*se), width = 0.2
+  ) +
+  chen_theme +
+  scale_y_continuous(
+    breaks = seq(0,100,20)
+    , sec.axis = sec_axis
+    (~./1,  breaks = seq(0,100,20)
+    )
+  ) +
+  coord_cartesian(ylim = c(5, 110)) +
+  scale_x_discrete(labels = function(x) stringr::str_wrap(x, width = 12)) +
+  ylab('Grand Mean Return \n (bps Monthly)') +
+  theme(
+    axis.title.x = element_blank()
+  )
+
+
+ggsave('../results/liq_screen.pdf', width = 8, height = 5, scale = 1.3,  device = cairo_pdf )
+
+
+
+## Numbers for paper -------------------------------------------------------
+
+signaldoc %>% 
+  filter(Cat.Signal == 'Predictor') %>% 
+  filter(!is.na(`Portfolio Period`)) %>% 
+  pull(`Portfolio Period`) %>% 
+  quantile()
+
+
+# Sample Time Returns ----------------------------------------------------------------
+
+rollmonths = 12*3
+
+rescale = 0.67
+
+# find rolling stats
+tempret = czret %>% 
+  select(signalname, date, ret, sampend) %>% 
+  mutate(
+    samp_time = year(date) + month(date)/12
+    - (year(sampend) + month(sampend)/12)
+  )
+rbar_samp_time = tempret %>% 
+  arrange(samp_time) %>% 
+  group_by(samp_time) %>% 
+  summarize(
+    rbar = mean(ret)*100/rescale, nsignal = dplyr::n()
+  ) %>% 
+  mutate(
+    roll_rbar = rollmean(rbar, k = rollmonths, fill = NA, align = 'right')
+  )
+
+
+# big pic stats
+czgrand = czret %>% group_by(samptype) %>% summarize(rbarbar = mean(ret)*100/rescale)
+
+guidedat = tibble(
+  time = seq(-50,50,0.02)
+) %>% 
+  mutate(
+    rbar = case_when(
+      time < 0 ~ 100
+      , time < 5 ~ 100 - 12
+      , time >= 5 ~ czgrand %>% filter(samptype == 'post-pub') %>% pull(rbarbar)
+    )
+  )
+
+
+ggplot(rbar_samp_time, aes(x = samp_time, y = roll_rbar)) +
+  geom_vline(xintercept = 0) +
+  geom_vline(xintercept = 3, linetype = 'dashed') +  
+  geom_line() +
+  coord_cartesian(
+    xlim = c(-10, 20), ylim = c(-0, 120)
+  ) +
+  scale_y_continuous(breaks = seq(0,180,20)) +
+  scale_x_continuous(breaks = seq(-50,25,5)) +  
+  geom_hline(
+    yintercept = czgrand %>% filter(samptype == 'in-samp') %>% pull(rbarbar) 
+    , color = MATBLUE
+  ) +
+  geom_hline(
+    yintercept = czgrand %>% filter(samptype == 'post-pub') %>% pull(rbarbar) 
+    , color = MATRED, linestyle = 'dotted'
+  ) +
+  geom_hline(
+    yintercept = 88
+    , color = MATYELLOW
+  ) +
+  # geom_line(dat = guidedat, aes(x= time, y = rbar)) +
+  chen_theme +
+  annotate(geom="text",
+           label=TeX("Publication Bias")
+           , x=-8, y=87, vjust=-1, family = "Palatino Linotype"
+  ) +      
+  annotate('segment', x=-5, xend = -5, y = 98, yend = 90
+           , arrow = arrow(length = unit(0.3,'cm')), size = 0.5) +  
+  annotate(geom="text",
+           label=TeX('\\Delta Expected Return'), x=-4.5, y=60, vjust=-1, 
+           family = "Palatino Linotype"
+  ) +
+  annotate('segment', x=-1, xend = -1, y = 85, yend = 54
+           , arrow = arrow(length = unit(0.3,'cm')), size = 0.5) +    
+  ylab('Trailing 3 Years \n Mean Return (bps p.m.)') +
+  xlab('Years Since Original Sample Ended') +
+  theme(
+    axis.title.y = element_text(size = 18)
+    , axis.title.x = element_text(size = 18)
+  ) 
+
+
+ggsave('../results/roll_rbar.pdf', height = 4, width = 8, scale = 1, device = cairo_pdf)
+
+
+
+## numbers for paper -------------------------------------------------------
+
+
+czret %>% 
+  group_by(signalname) %>% 
+  summarize(
+    acor1 = cor(ret, dplyr::lag(ret,1), use = 'pairwise.complete.obs')
+    , acor2 = cor(ret, dplyr::lag(ret,2), use = 'pairwise.complete.obs')
+    , acor3 = cor(ret, dplyr::lag(ret,3), use = 'pairwise.complete.obs')    
+    , acor4 = cor(ret, dplyr::lag(ret,4), use = 'pairwise.complete.obs')        
+  ) %>% 
+  summarize(
+    across(-'signalname', ~ mean(.x, na.rm=T))
+  )
+
+signaldoc %>% 
+  mutate(between = pubdate - sampend) %>% 
+  summarize(
+    mean(between)/365
+  )
+
+# Gregorian Time Returns ----------------------------------------------------------------
+
+rollmonths = 12*3
+
+# find rolling stats
+tempret = czret %>% 
+  select(signalname, date, ret, sampend) %>% 
+  mutate(
+    samp_time = year(date) + month(date)/12
+    - (year(sampend) + month(sampend)/12)
+  )
+rbar_time = tempret %>% 
+  arrange(date) %>% 
+  group_by(date) %>% 
+  summarize(
+    rbar = mean(ret)*100/.67, nsignal = dplyr::n()
+  ) %>% 
+  mutate(
+    roll_rbar = rollmean(rbar, k = rollmonths, fill = NA, align = 'right')
+  )
+
+
+# big pic stats
+mean_old = rbar_time %>% filter(date >= 2000)
+
+
+ggplot(rbar_time, aes(x = date, y = roll_rbar)) +
+  geom_line() 
+
+
+
 # YZ Figure ====
 
 # set up 
@@ -984,6 +1076,8 @@ dat_null =data.frame(
   , prob = (pnorm(t_right2) - pnorm(t_left2))*rescalefac*2
   , group = 'null'
 ) 
+
+
 
 
 ## plot --------------------------------------------------------------------
@@ -1029,6 +1123,4 @@ ggsave(
   scale = 0.9,
   device = cairo_pdf
 )
-
-
 
