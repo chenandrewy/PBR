@@ -1,80 +1,16 @@
 # SETUP ====
-rm(list = ls())
 tic = Sys.time()
-dir.create('../results/')
-source('functions.r')
+rm(list = ls())
+source('setup.r')
+testrun = F # T to run quickly for testing
 
-
-set.seed(1057)
-
-## graph defaults ====
-MATBLUE = rgb(0,0.4470,0.7410)
-MATRED = rgb(0.8500, 0.3250, 0.0980)
-MATYELLOW = rgb(0.9290, 0.6940, 0.1250)
-
-chen_theme = theme_minimal() +
-  theme(
-    text = element_text(family = "Palatino Linotype")
-    , panel.border = element_rect(colour = "black", fill=NA, size=1)    
-    
-    # Font sizes
-    , axis.title.x = element_text(size = 26),
-    axis.title.y = element_text(size = 26),
-    axis.text.x = element_text(size = 22),
-    axis.text.y = element_text(size = 22),
-    legend.text = element_text(size = 18),
-    
-    # Tweaking legend
-    legend.position = c(0.7, 0.8),
-    legend.text.align = 0,
-    legend.background = element_rect(fill = "white", color = "black"),
-    legend.margin = margin(t = 5, r = 20, b = 5, l = 5), 
-    legend.key.size = unit(1.5, "cm")
-    , legend.title = element_blank()    
-  ) 
-
-# Import/Prepare Data ====
-
-# ret from disc
-cz_all = fread("../data/PredictorPortsFull.csv")
-yzsum = fread('../data/yz_sum.csv')
-signaldoc = fread('../data/SignalDoc.csv') %>% 
-  rename(signalname = Acronym) %>% 
-  mutate(
-    pubdate = as.Date(paste0(Year, '-12-31'))
-    , sampend = as.Date(paste0(SampleEndYear, '-12-31'))
-    , sampstart = as.Date(paste0(SampleStartYear, '-01-01'))
-  )
-
-
-## CZRET ===
-czret = cz_all %>%         
-  filter(port == 'LS', !is.na(ret)) %>% 
-  left_join(signaldoc) %>% 
-  mutate(
-    samptype = case_when(
-      (date >= sampstart) & (date <= sampend) ~ 'in-samp'
-      , (date > sampend) & (date <= sampend %m+% months(36)) ~ 'out-of-samp'
-      , (date > pubdate) ~ 'post-pub'
-      , TRUE ~ 'NA_character_'
-    )
-  ) %>% 
-  select(signalname, date, ret, samptype, sampstart, sampend)
- 
-
-## CZSUM ===
-czsum = czret %>%
-  group_by(signalname, samptype) %>%
-  summarize(
-    rbar = mean(ret)
-    , vol = sd(ret)
-    , tstat = mean(ret)/sd(ret)*sqrt(dplyr::n())
-  )
 
 # Generate McLean-Pontiff bootstrapped mean returns figure ====
 ## bootstrap mean distributions ====
 set.seed(6)
 nboot = 2000
+
+if (testrun) {nboot = 200}
 
 bootfun = function(sampname){
   # make wide dataset, use NA if not correct sample
@@ -159,6 +95,8 @@ t_left = c(seq(2,9,1), Inf)
 sig_pct = pnorm(-t_left)*200
 nboot = 10*1000
 
+if (testrun) {nboot = 200}
+
 ## bootstrap ====
 ndatemin = 240
 
@@ -235,3 +173,129 @@ write.csv(tab_wide, '../results/t-too-big.csv')
 
 
 
+
+
+# Shrinkage Figure ----
+## prep data (Mostly Bootstrap) ---------------------------------------------------------------
+
+t_cut = -Inf
+
+nboot = 100
+ndatemin = 15*12
+
+
+boot_once = function(){
+  dateselect = sample(1:dim(czretmat)[1], ndatemax, replace = T)
+  
+  # draw returns, clustered by month
+  rboot = czretmat[dateselect, ]
+  
+  # summarize each predictor
+  rbar = apply(rboot, 2, mean, na.rm=T)
+  vol  = apply(rboot, 2, sd, na.rm=T)
+  ndate  = apply(rboot, 2, function(x) sum(!is.na(x)))
+  tstat = rbar/vol*sqrt(ndate)
+  
+  # remove if not enough observations
+  tstat2 = tstat[ndate > ndatemin]
+  
+  dat = data.table(mean_t_trunc = mean(tstat2[tstat2 > t_cut]))
+  return(dat)
+}
+
+# bootstrap!!
+ndatemax = dim(czretmat)[1]
+tic = Sys.time()
+set.seed(1057)
+bootdat = rbindlist(lapply(1:nboot, function(x) boot_once()))
+toc = Sys.time()
+toc - tic
+
+# compile
+dat_mean_t = bootdat %>% mutate(group = 'boot') %>% 
+  rbind(
+    data.table(
+      mean_t_trunc = mean(czsum$tstat[czsum$tstat > t_cut & czsum$samptype == "in-samp"]), group = 'emp'
+    )
+  )
+
+## estimate ----------------------------------------------------------
+tic = Sys.time()
+
+
+for (i in 1:(nboot+1)){
+  
+  mean_t_curr = dat_mean_t$mean_t_trunc[i]
+  
+  # build and solve truncated normal dist. for Lambda (x) [see Wikipedia - Truncated Nomrla]
+  trunc_normal <- function(x) 
+    ((dnorm(2/x, mean = 0, sd = 1)) / (1-pnorm(2/x, mean =0, sd = 1))) * x - mean_t_curr
+  lambda <- uniroot(trunc_normal, interval = c(.5, 10), tol = .00001)
+  
+  # shrinkage formula (RAPS)
+  shrink <- (1/(lambda$root**2))
+  
+  # store
+  dat_mean_t$shrink[i] = shrink
+  
+} # end for i in 1:nboot
+
+# find point estimate and standard errors
+estsum = list(
+  point = dat_mean_t %>% filter(group == 'emp') %>% pull(shrink)
+  , se  = dat_mean_t %>% filter(group == 'boot') %>% summarize(se = sd(shrink)) %>% pull(se)
+)
+
+## plot ----
+plotme = czret %>% 
+  group_by(samptype, signalname) %>% 
+  summarise(mean = mean(ret)) %>%
+  pivot_wider(names_from = samptype, values_from = mean) %>%
+  mutate(
+    muhat = `in-samp` * (1-shrink)
+  ) %>%
+  select(signalname, `out-of-samp`, `in-samp`, muhat) %>%
+  pivot_longer(cols = c(`out-of-samp`, muhat), names_to = 'group', values_to = 'y')
+
+fitslope = summary(lm(y ~ 0 + `in-samp`, data=plotme %>% filter(group == 'out-of-samp')))
+
+
+plotme = rename(plotme, insamp = `in-samp`)
+ggplot(data = plotme %>% filter(group == "out-of-samp")) + 
+  geom_point(aes(x = insamp, y = y, colour = "grey"),
+             stat = "Identity", fill = NA) +
+  geom_abline(aes(slope = 1-shrink, intercept = 0,linetype = "shrink est"), colour = MATBLUE, size = 1) +
+  geom_abline(aes(slope = 1-shrink + 2*estsum$se, intercept = 0,linetype = "error "), size = .7, colour = MATBLUE, size = 1) +
+  geom_abline(slope = 1-shrink - 2*estsum$se, intercept = 0, linetype = "dotted", color = MATBLUE, size = .7) + 
+  
+  # geom_smooth(method = lm, x = plotmeaes(x=insamp, y=y)) + 
+  geom_smooth(method = lm, aes(x = plotme$insamp[plotme$group == "out-of-samp"], y = y, linetype = "in samp"), colour=MATRED, size = 1) +
+  
+  scale_linetype_manual(labels = c("Shrinkage Est.", "2 SE C.I.", "In-Samp Mean"), values = c("dotted", "solid", "solid")) +
+  scale_colour_manual(labels = c("Years 1-3 Post Sample"), values = "grey") +
+  guides(colour = guide_legend(override.aes = list(colour = "grey", size = 1), order = 1),
+         linetype = guide_legend(title = NULL, override.aes = list(linetype = c("solid", "dotted", "solid"),
+                                                                   colour = c(MATBLUE, MATBLUE, MATRED),
+                                                                   size = c(1, .5, .5)),
+                                 order = 3)) + 
+  chen_theme +
+  theme(
+    legend.position = c(.8, .3)
+  ) +
+  xlim(-1, 3) + 
+  ylim(-2, 3) +
+  labs(y = "Out of Sample / \nBias Adjusted Return (% Monthly)", x = "In Sample Return (% Monthly)")
+
+
+
+ggsave(
+  "../results/shrinkage_figure.pdf",
+  width = 12,
+  height = 8,
+  device = cairo_pdf
+)
+
+
+toc = Sys.time()
+
+tic - toc
