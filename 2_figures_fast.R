@@ -131,6 +131,7 @@ ggsave(
 
 # Filling the Gap ----------------------------------------------------------------
 ## make plotting data ----
+
 # set up 
 edge = seq(0,20,0.5)
 t_left = edge[1:(length(edge)-1)]
@@ -325,6 +326,8 @@ ggsave(
 )
 
 
+
+
 # Monte Carlo: EZ -----
 
 ## simulate ez ----------------------------------------------------------------
@@ -339,7 +342,7 @@ dat = data.table(
   Z = rnorm(n), theta = theta_ez
 ) %>% 
   mutate(
-    t = theta + Z, v = theta > 0, tabs = abs(t)
+    t = theta + Z, v = theta > 0, tabs = abs(t), pub = t > 2
   ) %>% 
   mutate(
     v = factor(
@@ -378,10 +381,90 @@ hurdle_05 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 5)])
 hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
 
 
+# find pub stats
+pubstat = dat %>% 
+  filter(tselect>2) %>% 
+  summarize(
+    Et = mean(tselect)
+    , Etheta = mean(theta)
+    , FDR = mean(theta <= 0)    
+    , shrink = 1-mean(theta) / mean(tselect)
+  )
 
-## plot ez (top panel) --------------------------------------------------------------------
+pubplot = tibble(
+  tselect = seq(2,10,0.1), theta = pubstat$Et, group = 'naive' 
+)  %>% rbind(
+  tibble(
+    tselect = seq(2,10,0.1), theta = pubstat$Etheta, group = 'shrinkage' 
+  )   
+)
 
-# settings for both panels here
+
+
+
+## plot pub only bar --------------------------------------------------------------------
+
+plotme = dat %>% 
+  filter( pub ) %>% 
+  select(theta, t) %>% 
+  pivot_longer(cols  = c(theta,t)) 
+
+plotme = tibble(value = czsum$tstat[czsum$samptype == 'in-samp'], name = 't') %>% rbind(
+  tibble(value = dat$theta[dat$t>2], name = 'theta')
+)
+
+plotmeans = plotme %>% group_by(name) %>% summarize(mean = mean(value)) %>% 
+  pivot_wider(names_from = name, values_from = mean)
+
+color_theta = MATBLUE
+color_emp = 'dimgrey'
+textsize = 7
+
+ggplot(plotme, aes(x = value, group = name))   +
+  geom_histogram(
+    aes(y = ..density.., fill = name), position = 'identity', alpha = 0.5
+    , breaks = seq(-1,10,0.5), color = 'white'
+  ) +
+  scale_fill_manual(
+    values = c('dimgrey', MATBLUE)
+    , labels = c(TeX('Published $(t_i|pub_i)$')
+                 ,TeX('Corrected ($\\hat{\\theta}_i|pub_i$)'))
+    , name = NULL
+  ) +  
+  # shrinkage
+  geom_vline(xintercept = plotmeans$t, color = 'dimgrey', size = 1) +
+  geom_vline(xintercept = plotmeans$theta, color = color_theta, size = 1.1) +
+  annotate(geom="text"
+           , label='<--- Shrinkage',
+           x=47.5/10, y=0.32, vjust=-1,
+           family = "Palatino Linotype",  angle = 0, size = textsize, color = 'black' ) +
+  # fdr
+  geom_vline(xintercept = 0.25/2, color = MATRED, size = 1) +
+  scale_x_continuous(breaks = seq(-10,12,2)) +
+  annotate(geom="text"
+           , label="<- False",
+           x=-6/10, y=0.2, vjust=-1,
+           family = "Palatino Linotype",  size = textsize, color = 'black'
+  ) +
+  annotate(geom="text"
+           , label="True ->",
+           x=8/10, y=0.2, vjust=-1,
+           family = "Palatino Linotype",  size = textsize, color = 'black'
+  ) +  
+  chen_theme  +
+  theme(
+    legend.position = c(75,60)/100
+  ) +
+  coord_cartesian(ylim = c(0, 0.35)) +
+  xlab('t-statistic') + ylab('Density')
+
+
+ggsave('../results/monte-carlo-ez-bar.pdf', 
+       width = 14, height = 8, device = cairo_pdf, scale = 0.8)
+
+
+## plot ez scatter  --------------------------------------------------------------------
+# (not used)
 
 set.seed(89)
 iselect = sample(1:n, 1000)
@@ -392,6 +475,7 @@ ggplot(
   , aes(x=tselect,y=theta)) +
   geom_point(aes(group = v, color = v, shape = v), size = 2.5) +
   scale_shape_manual(values = c(16, 1)) +
+  # geom_line(data = pubplot, aes(group = group)) +  
   geom_line(
     data = datsum, aes(x=Etselect, y=Etheta, linetype = "Shrinkage Correction")
   ) +
@@ -421,6 +505,81 @@ ggsave('../results/monte-carlo-ez.pdf',
 )
 
 
+
+
+
+## plot pub only line ---------------------------------------------------------
+# (not used)
+
+# set up 
+edge = seq(-1,20,0.5)
+t_left = edge[1:(length(edge)-1)]
+t_right = edge[2:length(edge)]
+mid = t_left + diff(edge)/2
+
+edge2  = seq(-1,20,0.5)
+t_left2 = edge2[1:(length(edge2)-1)]
+t_right2 = edge2[2:length(edge2)]
+mid2 = t_left2 + diff(edge2)/2
+
+# empirical
+F_emp = ecdf(czsum$tstat[czsum$samptype == "in-samp"])
+dat_emp = data.frame(
+  t_mid = mid
+  , prob = (F_emp(t_right) - F_emp(t_left))
+  , group = 'emp'
+)
+
+# theta
+F_theta = ecdf(dat$theta[dat$pub])
+rescalefac = mean(diff(edge))/mean(diff(edge2))
+dat_theta =data.frame(
+  t_mid = mid2
+  , prob = (F_theta(t_right2) - F_theta(t_left2))*rescalefac
+  , group = 'null'
+) 
+
+
+labelmod = TeX('$E(\\theta_i|pub_i)$')
+
+ggplot(dat_emp, aes(x=t_mid,y=prob)) +
+  geom_bar(stat='identity',position='identity',alpha=0.6, aes(fill = group)) +
+  scale_fill_manual(
+    values = 'gray', labels = 'Published', name = NULL
+  ) +
+  geom_line(
+    data = dat_theta
+    , aes(color = group, linetype = group)
+    , size = 1.5
+  ) +
+  scale_color_manual(
+    values = MATBLUE, labels = labelmod, name = NULL
+  ) +
+  scale_linetype_manual(
+    values = 'solid', labels = labelmod, name = NULL
+  ) +  
+  chen_theme +
+  theme(
+    legend.position = c(75,50)/100
+    # , legend.margin = margin(t = -15, r = 20, b = 0, l = 5)
+  )  +
+  geom_vline(
+    xintercept = mean(czsum$tstat[czsum$samptype == "in-samp"]), color = 'darkgrey'
+    , size = 1
+    ) +
+  geom_vline(xintercept = mean(dat$theta[dat$pub]), color = MATBLUE
+             , size = 1) +
+  geom_vline(xintercept = 0, color = MATRED
+             , size = 1) +  
+  xlab('t-statistic') +
+  ylab('Frequency') +
+  coord_cartesian(
+    xlim = c(-2,10), ylim = c(0,0.2)
+  )  +
+  scale_x_continuous(breaks = seq(-10,20,2))
+
+
+
 ## numbers for text --------------------------------------------------------
 
 dat %>% 
@@ -446,17 +605,23 @@ n = 1e6
 # hlz baseline
 v  = runif(n) > 0.444
 se = 1500/sqrt(12)/sqrt(240)
-mu = rexp(n, 1/55.5*se)
-null = rnorm(n, 0, 0.1)
-mu[!v] = null[!v]
-theta_hlz = mu
+mu = rexp(n, 1/55.5); mu[!v] = 0
+theta = mu / se
+theta_scatter = theta; theta_scatter[!v] = rnorm(sum(!v), 0, 0.1)
+pubnoise = runif(n)
 
 # simulate
 dat = data.table(
-  Z = rnorm(n), theta = theta_hlz, v = v
+  Z = rnorm(n), theta, v, pubnoise, theta_scatter
 ) %>% 
   mutate(
-    t = theta + Z, tabs = abs(t)
+    t = theta + Z
+    , tabs = abs(t)
+    , pub = case_when(
+      tabs < 1.96 ~ F
+      , (1.96 < tabs) & (tabs <= 2.57) ~ pubnoise < 0.5
+      , 2.67 < tabs  ~ T
+    )
   ) %>% 
   mutate(
     v = factor(
@@ -495,51 +660,138 @@ hurdle_05 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 5)])
 hurdle_01 = min(datsum$tselect_left[which(datsum$fdr_tselect_left < 1)])
 hurdle_bonf05 = qnorm(1-0.05/300/2)
 
-## plot hlz ----
+
+# find pub stats
+pubstat = dat %>% 
+  filter(tselect>2) %>% 
+  summarize(
+    Et = mean(tselect)
+    , Etheta = mean(theta)
+    , FDR = mean(theta <= 0)    
+    , shrink = 1-mean(theta) / mean(tselect)
+  )
+
+pubplot = tibble(
+  tselect = seq(2,10,0.1), theta = pubstat$Et, group = 'naive' 
+)  %>% rbind(
+  tibble(
+    tselect = seq(2,10,0.1), theta = pubstat$Etheta, group = 'shrinkage' 
+  )   
+)
+
+
+
+## plot pub only bar --------------------------------------------------------------------
+
+plotme = dat %>% 
+  filter( pub ) %>% 
+  select(theta, t) %>% 
+  pivot_longer(cols  = c(theta,t)) 
+
+plotme = tibble(value = czsum$tstat[czsum$samptype == 'in-samp'], name = 't') %>% rbind(
+  tibble(value = dat$theta[dat$t>2], name = 'theta')
+)
+
+plotmeans = plotme %>% group_by(name) %>% summarize(mean = mean(value)) %>% 
+  pivot_wider(names_from = name, values_from = mean)
+
+color_theta = MATBLUE
+color_emp = 'dimgrey'
+textsize = 7
+
+ggplot(plotme, aes(x = value, group = name))   +
+  geom_histogram(
+    aes(y = ..density.., fill = name), position = 'identity', alpha = 0.5
+    , breaks = seq(-1,10,0.5), color = 'white'
+  ) +
+  scale_fill_manual(
+    values = c('dimgrey', MATBLUE)
+    , labels = c(TeX('Published $(t_i|pub_i)$')
+                 ,TeX('Corrected ($\\hat{\\theta}_i|pub_i$)'))
+    , name = NULL
+  ) +  
+  # shrinkage
+  geom_vline(xintercept = plotmeans$t, color = 'dimgrey', size = 1) +
+  geom_vline(xintercept = plotmeans$theta, color = color_theta, size = 1.1) +
+  annotate(geom="text"
+           , label='<--- Shrinkage',
+           x=46/10, y=0.32, vjust=-1,
+           family = "Palatino Linotype",  angle = 0, size = textsize, color = 'black' ) +
+  # fdr
+  geom_vline(xintercept = 0.25/2, color = MATRED, size = 1) +
+  scale_x_continuous(breaks = seq(-10,12,2)) +
+  annotate(geom="text"
+           , label="<- False",
+           x=-6/10, y=0.2, vjust=-1,
+           family = "Palatino Linotype",  size = textsize, color = 'black'
+  ) +
+  annotate(geom="text"
+           , label="True ->",
+           x=8/10, y=0.2, vjust=-1,
+           family = "Palatino Linotype",  size = textsize, color = 'black'
+  ) +  
+  chen_theme  +
+  theme(
+    legend.position = c(75,60)/100
+  ) +
+  coord_cartesian(ylim = c(0, 0.35)) +
+  xlab('t-statistic') + ylab('Density')
+
+
+ggsave('../results/monte-carlo-hlz-bar.pdf', 
+       width = 14, height = 8, device = cairo_pdf, scale = 0.8)
+
+## plot scatter  ----
+
 
 # settings for both panels here
 nplot = 1000
 set.seed(2)
-ggplot(
-  dat[sample(1:n,nplot),]
-  , aes(x=tselect,y=theta)
-) +
+
+texty = 7
+
+ggplot(dat[sample(1:n,nplot),], aes(x=tselect,y=theta_scatter)) +
   geom_point(aes(group = v, color = v, shape = v), size = 2.5) +
   scale_shape_manual(values = c(16, 1)) +
-  geom_vline(xintercept = 1.96, size = .75) +
-  geom_vline(xintercept = hurdle_05, size = 0.75, color = MATBLUE) +    
-  geom_vline(xintercept = hurdle_01, size = .75, color = MATRED) +
-  geom_abline(aes(slope = 1, intercept = 0, linetype = "Naive (45 deg)")) +
-  geom_line(
-    data = datsum, aes(x=Etselect, y=Etheta, linetype = "Shrinkage")
-  ) +
-  scale_linetype_manual(values = c(1,2)) +
   scale_color_manual(values=c(MATBLUE, MATRED)) +
-  coord_cartesian(
-    xlim = c(-0.5,6), ylim = c(-2,10)
-  ) +
-  scale_x_continuous(
-    breaks = seq(-10,10,1)
-  ) +
-  annotate(geom="text", 
-           label="Classical Hurdle", 
-           x=1.95, y=8.5, vjust=-1, 
+  # HURDLES
+  geom_vline(xintercept = 1.96, size = .75) +
+  annotate(geom="text", label="Classical Hurdle", 
+           x=1.95, y=texty, vjust=-1, 
            family = "Palatino Linotype", angle = 90, size = 6, color = 'black'
   ) +
+  geom_vline(xintercept = hurdle_05, size = 0.75, color = MATBLUE) +    
   annotate(geom="text", 
            label="FDR = 5%", 
-           x=23.5/10, y=8.5, vjust=-1, 
+           x=23.5/10, y=texty, vjust=-1, 
            family = "Palatino Linotype", angle = 90, size = 6, color = MATBLUE
   ) +  
+  geom_vline(xintercept = hurdle_01, size = .75, color = MATRED) +  
   annotate(geom="text", 
            label="FDR = 1%", 
-           x=3, y=8.5, vjust=-1, 
+           x=3, y=texty, vjust=-1, 
            family = "Palatino Linotype", angle = 90, size = 6, color = MATRED
   ) +
-  chen_theme +
-  theme(
-    legend.position = c(.15, .75)
+  geom_vline(xintercept = 3.8, size = 0.75, color = 'darkorchid') +
+  annotate(geom="text", 
+           label=TeX("FWER $\\leq 5\\%$"), 
+           x=3.8, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = 6, color = 'darkorchid'
+  ) +  
+  # SHRINKAGE
+  # geom_abline(aes(slope = 1, intercept = 0, linetype = "Naive (45 deg)")) +
+  # geom_line(
+  #   data = datsum, aes(x=Etselect, y=Etheta, linetype = "Shrinkage")
+  # ) +
+  # scale_linetype_manual(values = c(1,2)) +
+  coord_cartesian(
+    xlim = c(-0.1,8), ylim = c(-0.5,8)
   ) +
+  scale_x_continuous(
+    breaks = seq(-10,10,2)
+  ) +
+  chen_theme +
+  theme(legend.position = c(.80, .15)) +
   xlab(TeX("Absolute t-statistic $|\\t_i|$")) +
   ylab(TeX("Standardized Expected Return $\\theta_i$"))
 
@@ -548,6 +800,9 @@ ggsave('../results/monte-carlo-hlz.pdf',
        height = 8,
        device = cairo_pdf
 )
+
+
+
 
 ## numbers for text --------------------------------------------------------
 

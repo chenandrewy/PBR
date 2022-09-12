@@ -65,7 +65,7 @@ bootdat %>%
   ggplot(aes(x=retplot, fill=samptype)) +
   geom_histogram(alpha = 0.8
                  , position = 'identity'
-                 , breaks = seq(0,125, 2.5)
+                 , breaks = seq(0,125, 5)
                  , aes(y=..density..)
   ) +
   chen_theme + 
