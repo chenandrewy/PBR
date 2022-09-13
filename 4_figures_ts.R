@@ -10,7 +10,7 @@ pathExhibits = '../results/' # for general purpose use
 
 # Load data ---------------------------------------------------------------
 
-df = readxl::read_xlsx('Data/GoyalWelshZafirov2021.xlsx', sheet = 'Table2')  # for OP t-stats and replicated t-stats
+df = readxl::read_xlsx('Data_ts/GoyalWelshZafirov2021.xlsx', sheet = 'Table2')  # for OP t-stats and replicated t-stats
 
 
 # TS predictors from Goyal and Welsh (2008)
@@ -25,7 +25,7 @@ df = readxl::read_xlsx('Data/GoyalWelshZafirov2021.xlsx', sheet = 'Table2')  # f
 # French (1989), the inflation rate (infl), as in Fama and Schwert (1977); private investment (i/k),
 # as in Cochrane (1991), and “cay, ” 
 
-df_preds_m = readxl::read_xlsx('Data/PredictorData2021.xlsx', sheet = 'Monthly') %>% 
+df_preds_m = readxl::read_xlsx('Data_ts/PredictorData2021.xlsx', sheet = 'Monthly') %>% 
   mutate_all(as.numeric) %>% 
   transmute(dp = log(D12) - log(Index)
             , dy = log(D12) - lag(log(Index), 1)
@@ -49,7 +49,7 @@ df_preds_m = readxl::read_xlsx('Data/PredictorData2021.xlsx', sheet = 'Monthly')
   mutate(tbl = -1*tbl)
 
             
-df_preds_q = readxl::read_xlsx('Data/PredictorData2021.xlsx', sheet = 'Quarterly') %>% 
+df_preds_q = readxl::read_xlsx('Data_ts/PredictorData2021.xlsx', sheet = 'Quarterly') %>% 
   mutate_all(as.numeric) %>% 
   transmute(dp = log(D12) - log(Index)
             , dy = log(D12) - lag(log(Index), 1)
@@ -72,7 +72,7 @@ df_preds_q = readxl::read_xlsx('Data/PredictorData2021.xlsx', sheet = 'Quarterly
   ) %>% 
   mutate(tbl = -1*tbl)
 
-df_preds_a = readxl::read_xlsx('Data/PredictorData2021.xlsx', sheet = 'Annual') %>% 
+df_preds_a = readxl::read_xlsx('Data_ts/PredictorData2021.xlsx', sheet = 'Annual') %>% 
   mutate_all(as.numeric) %>% 
   transmute(dp = log(D12) - log(Index)
             , dy = log(D12) - lag(log(Index), 1)

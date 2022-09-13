@@ -5,7 +5,8 @@ source('setup.r')
 
 
 # Replication Figure ------------------------------------------
-## performance measures ====
+
+## prep data ====
 
 # make data on hand collection
 fit_OP = signaldoc %>% 
@@ -65,8 +66,16 @@ ggsave(
 
 
 
+## numbers for paper ====
 
 
+lm(data = fitcomp, formula = tstat_CZ ~ 0 + tstat_OP) %>% summary()
+
+
+fitcomp %>% 
+  mutate(err = tstat_CZ - tstat_OP) %>% 
+  ungroup() %>% 
+  summarize(mean(abs(err)))
 
 
 
@@ -639,7 +648,7 @@ dat = data.table(
 # fit shrinkage
 datsum = dat %>% 
   mutate(
-    tgroup = ntile(tselect,100)
+    tgroup = ntile(tselect,1000)
   ) %>% 
   group_by(tgroup) %>% 
   summarize(
@@ -777,15 +786,20 @@ holm_05 = dat[sample(1:n,ntotal), ] %>% select(tabs) %>%
 
 
 # settings for both panels here
-nplot = 1000
-set.seed(5)
+nplot = 1500
+set.seed(4)
 
-texty = 7
+texty = 8
 textsize = 7
 
 linesize = 1.1
 
-ggplot(dat[sample(1:n,nplot),], aes(x=tselect,y=theta_scatter)) +
+
+small = dat[sample(1:n,nplot),]
+
+
+
+ggplot(small, aes(x=tselect,y=theta_scatter)) +
   geom_point(aes(group = v, color = v, shape = v), size = 2.5) +
   scale_shape_manual(values = c(16, 1)) +
   scale_color_manual(values=c(MATBLUE, MATRED)) +
@@ -837,7 +851,7 @@ ggsave('../results/hlz-scatter.pdf',
        device = cairo_pdf
 )
 
-
+small %>% filter(tabs > hurdle_01) %>% summarize(mean(v == 'False Predictor'))
 
 
 ## numbers for text --------------------------------------------------------
