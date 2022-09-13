@@ -192,11 +192,11 @@ groupdat = tibble(
   group = c('null', 'miss', 'fit')
   , color = c(MATRED, MATYELLOW, MATBLUE)
   , labels = c(
-    TeX('Var($\\theta_i$) = 0 (Null)')
-    , TeX('Var($\\theta_i$) = $1.5^2$')    
-    , TeX('Var($\\theta_i$) = $3.0^2$ (Fit)')
+    TeX('$\\sigma_\\theta$ = 0 (Null)')
+    , TeX('$\\sigma_\\theta$ = $1.5$')    
+    , TeX('$\\hat{\\sigma}_\\theta$ = $3$ (Fit)')
   )
-  , linetype = c('dashed','dotdash','solid')
+  , linetype = c('dotted','longdash','solid')
 )
 
 ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
@@ -223,7 +223,7 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   xlab('t-statistic') +
   ylab('Frequency') +
   coord_cartesian(
-    xlim = c(0,10), ylim = c(0,0.5)
+    xlim = c(0,15), ylim = c(0,0.2)
   )  
 
 ggsave('../results/filling-the-gap.pdf', 
@@ -234,7 +234,13 @@ ggsave('../results/filling-the-gap.pdf',
 
 # Lit Comp Figure ----
 ## generate theta data -----
-n = 1e4
+n = 1e5
+
+# ez (really, CZ 20 appendix)
+dat.ez = data.table(
+  paper = 'ez', theta = rnorm(n,0,3)
+)
+
 
 # hlz
 v  = runif(n) > 0.444
@@ -247,9 +253,9 @@ dat.hlz = data.table(
   paper = 'hlz', theta = theta_hlz
 )
 
-# cz
+# cz: page 18 Table 3 All
 mu = rt(n, 4)*45
-se = 22
+se = exp(rnorm(n, -1.67, 0.52))*100
 
 dat.cz = data.table(
   paper = 'cz', theta = mu/se
@@ -264,17 +270,12 @@ sigmu = (tauc_alt^2 + tauw^2)^0.5
 
 # footnote 36
 sig = (1000^2/12)^(1/2)
-T = 420
-se = sig/sqrt(T)
+nmonth = 420
+se = sig/sqrt(nmonth)
 sigtheta = sigmu/se
 
 dat.jkp = data.table(
   paper = 'jkp', theta = rnorm(n,0,sigtheta)
-)
-
-# ez
-dat.ez = data.table(
-  paper = 'ez', theta = rnorm(n,0,3)
 )
 
 dat = rbind(dat.hlz,dat.cz, dat.jkp, dat.ez) %>% 
@@ -283,16 +284,18 @@ dat = rbind(dat.hlz,dat.cz, dat.jkp, dat.ez) %>%
   )
 
 
+
+
 ## plot -----
 
 groupdat = tibble(
   group =  c('ez','hlz','cz','jkp')
   , color = c( MATBLUE, MATRED, MATYELLOW, 'gray')
   , labels = c(
-    TeX("Simple $\\theta_i \\sim$ Normal")
-    , "Harvey, Liu and Zhu 2016"
-    , "Chen, Zimmerman 2020"
-    , "Jensen, Kelly and Pederson Forth"
+    TeX("Simple Normal")
+    , "Harvey-Liu-Zhu"
+    , "Chen-Zimmerman"
+    , "Jensen-Kelly-Pederson"
   )
   , linetype = c(1,2,3,4)
 )
@@ -301,10 +304,7 @@ groupdat = tibble(
 
 ggplot(dat, aes(x=theta, linetype = paper, color = paper)) +
   geom_density(
-    position = 'identity', alpha = 0.6, adjust = 1.2, size = 1
-  ) +
-  coord_cartesian(
-    xlim = c(-10,10), ylim = c(0, 0.4)
+    position = 'identity', alpha = 0.6, adjust = 1.2, size = 1.2
   ) +
   scale_color_manual(
     values = groupdat$color, labels = groupdat$labels, name = NULL
@@ -313,10 +313,11 @@ ggplot(dat, aes(x=theta, linetype = paper, color = paper)) +
     values = groupdat$linetype, labels = groupdat$labels, name = NULL
   ) +
   chen_theme +
-  theme(
-    legend.position = c(.25, .75)
-  ) + 
-  xlab(TeX("Standardized Expected Return ($\\theta_i$)"))  
+  theme(legend.position = c(.2, .75)) + 
+  coord_cartesian(xlim = c(-8,8), ylim = c(0, 0.3)) +  
+  scale_x_continuous(breaks = seq(-20,20,2)) +
+  xlab(TeX("Corrected t-statistic $\\theta_i$"))  +
+  ylab('Density')
 
 ggsave(
   "../results/lit-comp.pdf",
@@ -362,7 +363,7 @@ datsum = dat %>%
   summarize(
     tselect_left = min(tselect), tselect_right = max(tselect)
     , Etselect = mean(tselect), Etheta = mean(theta), n = dplyr::n()
-    , nfalse = sum(!v)
+    , nfalse = sum(v == 'False Predictor')
   )
 
 
@@ -409,7 +410,9 @@ plotme = dat %>%
   select(theta, t) %>% 
   pivot_longer(cols  = c(theta,t)) 
 
-plotme = tibble(value = czsum$tstat[czsum$samptype == 'in-samp'], name = 't') %>% rbind(
+plotme = tibble(
+  value = czsum$tstat[czsum$samptype == 'in-samp' & czsum$tstat > 0]
+                , name = 't') %>% rbind(
   tibble(value = dat$theta[dat$t>2], name = 'theta')
 )
 
@@ -423,40 +426,40 @@ textsize = 7
 ggplot(plotme, aes(x = value, group = name))   +
   geom_histogram(
     aes(y = ..density.., fill = name), position = 'identity', alpha = 0.5
-    , breaks = seq(-1,10,0.5), color = 'white'
+    , breaks = c(seq(-1,16,0.5)) , color = 'white'
   ) +
   scale_fill_manual(
     values = c('dimgrey', MATBLUE)
-    , labels = c(TeX('Published $(t_i|pub_i)$')
+    , labels = c(TeX('Observed $(t_i|pub_i)$')
                  ,TeX('Corrected ($\\hat{\\theta}_i|pub_i$)'))
     , name = NULL
   ) +  
   # shrinkage
-  geom_vline(xintercept = plotmeans$t, color = 'dimgrey', size = 1) +
-  geom_vline(xintercept = plotmeans$theta, color = color_theta, size = 1.1) +
+  geom_vline(xintercept = plotmeans$t, color = 'dimgrey', size = 1
+             , linetype = 'dashed') +
+  geom_vline(xintercept = plotmeans$theta, color = color_theta, size = 1.1
+             , linetype = 'dashed') +
   annotate(geom="text"
-           , label='<--- Shrinkage',
-           x=47.5/10, y=0.32, vjust=-1,
+           , label='<-- Shrinkage',
+           x=51/10, y=0.32, vjust=-1,
            family = "Palatino Linotype",  angle = 0, size = textsize, color = 'black' ) +
   # fdr
   geom_vline(xintercept = 0.25/2, color = MATRED, size = 1) +
-  scale_x_continuous(breaks = seq(-10,12,2)) +
   annotate(geom="text"
            , label="<- False",
-           x=-6/10, y=0.2, vjust=-1,
+           x=-8/10, y=0.28, vjust=-1,
            family = "Palatino Linotype",  size = textsize, color = 'black'
   ) +
   annotate(geom="text"
            , label="True ->",
-           x=8/10, y=0.2, vjust=-1,
+           x=10/10, y=0.28, vjust=-1,
            family = "Palatino Linotype",  size = textsize, color = 'black'
   ) +  
   chen_theme  +
-  theme(
-    legend.position = c(75,60)/100
-  ) +
-  coord_cartesian(ylim = c(0, 0.35)) +
-  xlab('t-statistic') + ylab('Density')
+  theme(legend.position = c(75,60)/100) +
+  coord_cartesian(xlim = c(-1, 15), ylim = c(0, 0.35)) +
+  scale_x_continuous(breaks = seq(-10,20,2)) +  
+  xlab('Published t-statistic') + ylab('Density')
 
 
 ggsave('../results/monte-carlo-ez-bar.pdf', 
@@ -489,7 +492,7 @@ ggplot(
   annotate(geom="text",
            label="Classical Hurdle",
            x=1.95, y=6.5, vjust=-1,
-           family = "Palatino Linotype", angle = 90, size = 6, color = 'black'
+           family = "Palatino Linotype", angle = 90, size = textsize, color = 'black'
   ) +
   chen_theme +
   theme(
@@ -574,7 +577,7 @@ ggplot(dat_emp, aes(x=t_mid,y=prob)) +
   xlab('t-statistic') +
   ylab('Frequency') +
   coord_cartesian(
-    xlim = c(-2,10), ylim = c(0,0.2)
+    xlim = c(-2,15), ylim = c(0,0.2)
   )  +
   scale_x_continuous(breaks = seq(-10,20,2))
 
@@ -609,6 +612,7 @@ mu = rexp(n, 1/55.5); mu[!v] = 0
 theta = mu / se
 theta_scatter = theta; theta_scatter[!v] = rnorm(sum(!v), 0, 0.1)
 pubnoise = runif(n)
+ 
 
 # simulate
 dat = data.table(
@@ -618,9 +622,9 @@ dat = data.table(
     t = theta + Z
     , tabs = abs(t)
     , pub = case_when(
-      tabs < 1.96 ~ F
+      tabs <= 1.96 ~ FALSE
       , (1.96 < tabs) & (tabs <= 2.57) ~ pubnoise < 0.5
-      , 2.67 < tabs  ~ T
+      , 2.57 < tabs  ~ TRUE
     )
   ) %>% 
   mutate(
@@ -683,14 +687,11 @@ pubplot = tibble(
 
 ## plot pub only bar --------------------------------------------------------------------
 
-plotme = dat %>% 
-  filter( pub ) %>% 
-  select(theta, t) %>% 
-  pivot_longer(cols  = c(theta,t)) 
-
-plotme = tibble(value = czsum$tstat[czsum$samptype == 'in-samp'], name = 't') %>% rbind(
-  tibble(value = dat$theta[dat$t>2], name = 'theta')
-)
+plotme = tibble(
+  value = czsum$tstat[czsum$samptype == 'in-samp' & czsum$tstat > 0]
+  , name = 't') %>% rbind(
+    tibble(value = dat$theta[dat$pub], name = 'theta')
+  )
 
 plotmeans = plotme %>% group_by(name) %>% summarize(mean = mean(value)) %>% 
   pivot_wider(names_from = name, values_from = mean)
@@ -702,81 +703,115 @@ textsize = 7
 ggplot(plotme, aes(x = value, group = name))   +
   geom_histogram(
     aes(y = ..density.., fill = name), position = 'identity', alpha = 0.5
-    , breaks = seq(-1,10,0.5), color = 'white'
+    , breaks = c(seq(-1,16,0.5)) , color = 'white'
   ) +
   scale_fill_manual(
     values = c('dimgrey', MATBLUE)
-    , labels = c(TeX('Published $(t_i|pub_i)$')
+    , labels = c(TeX('Observed $(|t_i||pub_i)$')
                  ,TeX('Corrected ($\\hat{\\theta}_i|pub_i$)'))
     , name = NULL
   ) +  
   # shrinkage
-  geom_vline(xintercept = plotmeans$t, color = 'dimgrey', size = 1) +
-  geom_vline(xintercept = plotmeans$theta, color = color_theta, size = 1.1) +
+  geom_vline(xintercept = plotmeans$t, color = 'dimgrey', size = 1
+             , linetype = 'dashed') +
+  geom_vline(xintercept = plotmeans$theta, color = color_theta, size = 1.1
+             , linetype = 'dashed') +
   annotate(geom="text"
-           , label='<--- Shrinkage',
-           x=46/10, y=0.32, vjust=-1,
+           , label='<-- Shrinkage',
+           x=51.2/10, y=0.32, vjust=-1,
            family = "Palatino Linotype",  angle = 0, size = textsize, color = 'black' ) +
   # fdr
   geom_vline(xintercept = 0.25/2, color = MATRED, size = 1) +
-  scale_x_continuous(breaks = seq(-10,12,2)) +
   annotate(geom="text"
            , label="<- False",
-           x=-6/10, y=0.2, vjust=-1,
+           x=-8/10, y=0.28, vjust=-1,
            family = "Palatino Linotype",  size = textsize, color = 'black'
   ) +
   annotate(geom="text"
            , label="True ->",
-           x=8/10, y=0.2, vjust=-1,
+           x=10/10, y=0.28, vjust=-1,
            family = "Palatino Linotype",  size = textsize, color = 'black'
   ) +  
   chen_theme  +
-  theme(
-    legend.position = c(75,60)/100
-  ) +
-  coord_cartesian(ylim = c(0, 0.35)) +
-  xlab('t-statistic') + ylab('Density')
+  theme(legend.position = c(75,60)/100) +
+  coord_cartesian(xlim = c(-1, 15), ylim = c(0, 0.35)) +
+  scale_x_continuous(breaks = seq(-10,20,2)) +  
+  xlab('Published Absolute t-statistic') + ylab('Density')
 
 
 ggsave('../results/monte-carlo-hlz-bar.pdf', 
        width = 14, height = 8, device = cairo_pdf, scale = 0.8)
 
+
+## numbers for text --------------------------------------------------------
+
+print('shrinkage')
+1-plotmeans$theta/plotmeans$t
+
+
+print('FDR')
+plotme %>% filter(name == 'theta') %>% summarize(mean(value<=0)*100) 
+
+
+
 ## plot scatter  ----
+
+# holm algo
+
+ntotal = 300/mean(dat$pub)
+
+set.seed(430)
+
+holm_05 = dat[sample(1:n,ntotal), ] %>% select(tabs) %>% 
+  arrange(desc(tabs)) %>% 
+  mutate(
+    pval = 2*pnorm(-tabs)
+    , k = row_number()
+    , signif = pval < 0.05/(ntotal + 1 - k)
+  ) %>% 
+  filter(signif == F) %>% 
+  filter(row_number() == 1) %>% 
+  pull(tabs)
+  
+  
 
 
 # settings for both panels here
 nplot = 1000
-set.seed(2)
+set.seed(5)
 
 texty = 7
+textsize = 7
+
+linesize = 1.1
 
 ggplot(dat[sample(1:n,nplot),], aes(x=tselect,y=theta_scatter)) +
   geom_point(aes(group = v, color = v, shape = v), size = 2.5) +
   scale_shape_manual(values = c(16, 1)) +
   scale_color_manual(values=c(MATBLUE, MATRED)) +
   # HURDLES
-  geom_vline(xintercept = 1.96, size = .75) +
+  geom_vline(xintercept = 1.96, size = linesize) +
   annotate(geom="text", label="Classical Hurdle", 
            x=1.95, y=texty, vjust=-1, 
-           family = "Palatino Linotype", angle = 90, size = 6, color = 'black'
+           family = "Palatino Linotype", angle = 90, size = textsize, color = 'black'
   ) +
-  geom_vline(xintercept = hurdle_05, size = 0.75, color = MATBLUE) +    
+  geom_vline(xintercept = hurdle_05, size = linesize, color = 'dimgrey', linetype = 'longdash') +    
   annotate(geom="text", 
            label="FDR = 5%", 
-           x=23.5/10, y=texty, vjust=-1, 
-           family = "Palatino Linotype", angle = 90, size = 6, color = MATBLUE
+           x=24/10, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = 'dimgrey'
   ) +  
-  geom_vline(xintercept = hurdle_01, size = .75, color = MATRED) +  
+  geom_vline(xintercept = hurdle_01, size = linesize, color = MATRED, linetype = 'dotdash') +  
   annotate(geom="text", 
            label="FDR = 1%", 
            x=3, y=texty, vjust=-1, 
-           family = "Palatino Linotype", angle = 90, size = 6, color = MATRED
+           family = "Palatino Linotype", angle = 90, size = textsize, color = MATRED
   ) +
-  geom_vline(xintercept = 3.8, size = 0.75, color = 'darkorchid') +
+  geom_vline(xintercept = holm_05, size = linesize, color = 'darkorchid', linetype = 'dotted') +
   annotate(geom="text", 
-           label=TeX("FWER $\\leq 5\\%$"), 
-           x=3.8, y=texty, vjust=-1, 
-           family = "Palatino Linotype", angle = 90, size = 6, color = 'darkorchid'
+           label=TeX("Holm 5\\%"), 
+           x=holm_05, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = 'darkorchid'
   ) +  
   # SHRINKAGE
   # geom_abline(aes(slope = 1, intercept = 0, linetype = "Naive (45 deg)")) +
@@ -784,18 +819,19 @@ ggplot(dat[sample(1:n,nplot),], aes(x=tselect,y=theta_scatter)) +
   #   data = datsum, aes(x=Etselect, y=Etheta, linetype = "Shrinkage")
   # ) +
   # scale_linetype_manual(values = c(1,2)) +
-  coord_cartesian(
-    xlim = c(-0.1,8), ylim = c(-0.5,8)
-  ) +
-  scale_x_continuous(
-    breaks = seq(-10,10,2)
-  ) +
+  coord_cartesian(xlim = c(-0.1,10), ylim = c(-0.5,10)) +
+  scale_x_continuous(breaks = seq(-10,20,2)) +
+  scale_y_continuous(breaks = seq(-10,20,2)) +  
   chen_theme +
-  theme(legend.position = c(.80, .15)) +
+  theme(
+    legend.position = c(.80, .15)
+    , panel.grid.major = element_blank()
+    , panel.grid.minor = element_blank()
+  ) +
   xlab(TeX("Absolute t-statistic $|\\t_i|$")) +
-  ylab(TeX("Standardized Expected Return $\\theta_i$"))
+  ylab(TeX("Corrected t-statistic $\\theta_i$"))
 
-ggsave('../results/monte-carlo-hlz.pdf', 
+ggsave('../results/hlz-scatter.pdf', 
        width = 12,
        height = 8,
        device = cairo_pdf
@@ -806,24 +842,7 @@ ggsave('../results/monte-carlo-hlz.pdf',
 
 ## numbers for text --------------------------------------------------------
 
-dat %>% 
-  filter(tselect>1.96) %>% 
-  summarize(
-    mean(tselect)
-    , mean(theta)
-    , mean(v == 'False Predictor')    
-    , mean(theta) / mean(tselect)
-  )
 
-
-dat %>% 
-  filter(t>1.96) %>% 
-  summarize(
-    mean(t)
-    , mean(theta)
-    , mean(v == 'False Predictor')    
-    , mean(theta) / mean(t)
-  )
 
 
 dat %>% 

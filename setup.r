@@ -25,10 +25,10 @@ NICEBLUE = "#619CFF"
 NICEGREEN = "#00BA38"
 NICERED = "#F8766D"
 
-chen_theme =   theme_classic() +
+chen_theme =   theme_minimal() +
   theme(
     text = element_text(family = "Palatino Linotype")
-    , panel.border = element_rect(colour = "black", fill=NA, size=1)    
+    , panel.border = element_rect(colour = "black", fill=NA, size=1)
     
     # Font sizes
     , axis.title.x = element_text(size = 26),
