@@ -99,10 +99,9 @@ df_preds_a = readxl::read_xlsx('Data_ts/PredictorData2021.xlsx', sheet = 'Annual
 
 df %>% 
   ggplot(aes(x=abs(t_OP), y = abs(t_rep))) +
-  geom_text(aes(label = Vrbl)) +
-  theme_bw(
-    base_size = 15
-  ) +
+  chen_theme +
+  geom_text(aes(label = Vrbl, family="Palatino Linotype"), position = position_nudge(y=-.15)) +
+  geom_point(color=MATBLUE, size = 2) +
   theme(
     legend.position = c(.8, .25)
     # , text = element_text(size=30, family = "Palatino Linotype")
@@ -113,8 +112,8 @@ df %>%
   labs(x = 't-stat Original Paper'
        , y = 't-stat Replicated')  +
   coord_trans(x='log10', y='log10', xlim = c(1.5, 6), ylim = c(1.0, 6)) +
-  scale_x_continuous(breaks=c(1, 2, 3, 4)) +
-  scale_y_continuous(breaks=c(1, 2, 3, 4))
+  scale_x_continuous(breaks=c(1, 2, 3, 4, 5)) +
+  scale_y_continuous(breaks=c(1, 2, 3, 4, 5))
 
 ggsave(paste0(pathExhibits, 'fig_ts_scatterOPvsRep.png'), width = 8, height = 6)
 
