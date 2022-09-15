@@ -100,14 +100,13 @@ df_preds_a = readxl::read_xlsx('Data_ts/PredictorData2021.xlsx', sheet = 'Annual
 df %>% 
   ggplot(aes(x=abs(t_OP), y = abs(t_rep))) +
   chen_theme +
-  geom_text(aes(label = Vrbl, family="Palatino Linotype"), position = position_nudge(y=-.15)) +
-  geom_point(color=MATBLUE, size = 2) +
+  geom_text(aes(label = Vrbl, family="Palatino Linotype"), size = 6) +
   theme(
     legend.position = c(.8, .25)
     # , text = element_text(size=30, family = "Palatino Linotype")
   ) +
   geom_abline(
-    aes(slope = 1, intercept = 0)
+    aes(slope = 1, intercept = 0, linetype = "45 deg. line")
   ) +
   labs(x = 't-stat Original Paper'
        , y = 't-stat Replicated')  +
@@ -115,19 +114,60 @@ df %>%
   scale_x_continuous(breaks=c(1, 2, 3, 4, 5)) +
   scale_y_continuous(breaks=c(1, 2, 3, 4, 5))
 
-ggsave(paste0(pathExhibits, 'fig_ts_scatterOPvsRep.png'), width = 8, height = 6)
+ggsave(
+  "../results/ts_raw_op.pdf",
+  width = 12,
+  height = 8,
+  device = cairo_pdf
+)
 
 
 # Fact 3: Empirical t-stats are not very large ----------------------------
+# ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid)) +
+#   geom_histogram(position='identity',alpha=0.6,breaks = c(0, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6)) +
+#   chen_theme
 
-df %>% 
-  ggplot(aes(x = abs(t_OP))) +
-  geom_histogram(center = .5, breaks = c(1, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6)) +
-  geom_vline(xintercept = c(quantile(abs(df$t_OP), c(.5, .9)))) + 
-  theme_bw(base_size = 15) +
-  labs(x = 'Reported t-stat', y = 'Count')
+# cross sectional frequency
+F_emp = ecdf(czsum$tstat[czsum$samptype == "in-samp"])
+cs_emp_dat = data.frame(
+  t_mid = mid
+  , prob = (F_emp(t_right) - F_emp(t_left))
+  , group = 'cs'
+)
+
+# time series emp
+ts_emp = ecdf(df$t_OP)
+ts_emp_dat = data.frame(
+  t_mid = mid,
+  prob = (ts_emp(t_right) - ts_emp(t_left)),
+  group = "ts"
+)
+
+# dat_all_ts_cs
+dat_all_ts_cs = rbind(ts_emp_dat, cs_emp_dat) %>% 
+  mutate(
+    group = factor(group, levels = c('cs', 'ts'))
+  )
+
+ggplot(dat_all_ts_cs, aes(x=t_mid,y=prob, fill = as.factor(group))) +
+  geom_bar(data = subset(dat_all_ts_cs, group == "ts"), stat = 'identity', position='identity',alpha=0.6) +
+  geom_bar(data = subset(dat_all_ts_cs, group == "cs"), stat = 'identity', position='identity',alpha=0.6) +
+  scale_fill_manual(
+    values = c("grey", MATBLUE), labels = c("Time Series", "Cross Sectional"), name = NULL
+  ) +
+  scale_x_continuous(limits=c(0, 15)) +
+  chen_theme +
+  xlab("Reported t-stat") +
+  ylab("Frequency")
 
 ggsave(paste0(pathExhibits, 'fig_ts_t_stat.png'), width = 8, height = 6)
+ggsave(
+  "../results/ts_t_stat.pdf",
+  width = 12,
+  height = 8,
+  device = cairo_pdf
+)
+
 
 # Table
 tmp = hist(abs(df$t_OP), breaks = c(1, 2, 3, 4, 5, 6), plot = F)
@@ -154,12 +194,22 @@ cors = tibble(cor = cor_m, freq = 'monthly') %>%
   bind_rows(tibble(cor = cor_a, freq = 'annually'))
     
 cors %>% 
-  ggplot(aes(x = cor)) +
-  geom_histogram() +
+  ggplot(aes(x = cor, color = freq)) +
+  geom_histogram(fill = MATBLUE, color = NA, show.legend = FALSE, size = 1) +
   facet_wrap(~freq) +
-  theme_bw(base_size = 15)
+  chen_theme +
+  theme(
+    text = element_text(size = 24)
+  ) +
+  # scale_color_manual(MATBLUE) +
+  labs(x = 'Correlation', y = 'Count')
 
-ggsave(paste0(pathExhibits, 'fig_ts_correlations.png'), width = 10, height = 6)
+ggsave(
+  "../results/fig_ts_correlations.pdf",
+  width = 12,
+  height = 8,
+  device = cairo_pdf
+)
 
 cors %>% 
   group_by(freq) %>% 
