@@ -48,8 +48,8 @@ fitcomp %>%
     legend.position = c(.75, .25)
   ) + 
   geom_abline(
-    aes(slope = 1, intercept = 0)
-  )+
+    aes(slope = 1, intercept = 0, linetype = "45 deg. line")
+  ) +
   labs(x = 't-stat Original Paper'
        , y = 't-stat Replicated')  +
   coord_trans(x='log10', y='log10', xlim = c(1.5, 17), ylim = c(1.5, 15)) +
@@ -67,8 +67,6 @@ ggsave(
 
 
 ## numbers for paper ====
-
-
 lm(data = fitcomp, formula = tstat_CZ ~ 0 + tstat_OP) %>% summary()
 
 
@@ -209,7 +207,7 @@ groupdat = tibble(
 )
 
 ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
-  geom_bar(stat='identity',position='identity',alpha=0.6, aes(fill = group)) +
+  geom_bar(stat = 'identity', position='identity',alpha=0.6, aes(fill = group)) +
   scale_fill_manual(
     values = 'gray', labels = 'Published', name = NULL
   ) +
@@ -1112,7 +1110,7 @@ t_right2 = edge2[2:length(edge2)]
 mid2 = t_left2 + diff(edge2)/2
 
 # empirical
-F_emp = ecdf(yzsum$tabs)
+F_emp = ecdf(yzsum$tstat)
 dat_emp = data.frame(
   t_mid = mid
   , prob = (F_emp(t_right) - F_emp(t_left))
