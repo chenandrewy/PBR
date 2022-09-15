@@ -2,16 +2,18 @@
 # # # # # # # # # # # # # #  
 
 # Load packages -----------------------------------------------------------
-
-library(tidyverse)
+source('setup.r')
 
 pathExhibits = '../../Apps/Overleaf/Publication Bias in Asset Pricing/exhibits/' # for Tom
 pathExhibits = '../results/' # for general purpose use
 
 # Load data ---------------------------------------------------------------
 
-df = readxl::read_xlsx('Data_ts/GoyalWelshZafirov2021.xlsx', sheet = 'Table2')  # for OP t-stats and replicated t-stats
-
+df = readxl::read_xlsx('Data_ts/GoyalWelshZafirov2021.xlsx', sheet = 'Table2') %>%   # for OP t-stats and replicated t-stats
+  mutate(
+    t_rep_sign = t_rep * sign(t_OP)
+    , t_OP_sign = t_OP * sign(t_OP)
+  ) 
 
 # TS predictors from Goyal and Welsh (2008)
 
