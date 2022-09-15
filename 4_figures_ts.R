@@ -10,7 +10,7 @@ pathExhibits = '../results/' # for general purpose use
 
 # Load data ---------------------------------------------------------------
 
-df = readxl::read_xlsx('Data_ts/GoyalWelshZafirov2021.xlsx', sheet = 'Table2')  # for OP t-stats and replicated t-stats
+df = readxl::read_xlsx('Data_ts/GoyalWelchZafirov2021.xlsx', sheet = 'Table2')  # for OP t-stats and replicated t-stats
 
 
 # TS predictors from Goyal and Welsh (2008)
