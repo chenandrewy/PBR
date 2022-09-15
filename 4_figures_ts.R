@@ -10,7 +10,7 @@ pathExhibits = '../results/' # for general purpose use
 
 # Load data ---------------------------------------------------------------
 
-df = readxl::read_xlsx('Data_ts/GoyalWelshZafirov2021.xlsx', sheet = 'Table2')  # for OP t-stats and replicated t-stats
+df = readxl::read_xlsx('Data_ts/GoyalWelchZafirov2021.xlsx', sheet = 'Table2')  # for OP t-stats and replicated t-stats
 
 
 # TS predictors from Goyal and Welsh (2008)
@@ -123,9 +123,12 @@ ggsave(
 
 
 # Fact 3: Empirical t-stats are not very large ----------------------------
-# ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid)) +
-#   geom_histogram(position='identity',alpha=0.6,breaks = c(0, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6)) +
-#   chen_theme
+
+# set up 
+edge = seq(-1,20,0.5)
+t_left = edge[1:(length(edge)-1)]
+t_right = edge[2:length(edge)]
+mid = t_left + diff(edge)/2
 
 # cross sectional frequency
 F_emp = ecdf(czsum$tstat[czsum$samptype == "in-samp"])
@@ -135,7 +138,8 @@ cs_emp_dat = data.frame(
   , group = 'cs'
 )
 
-# time series emp
+# time series frequency
+df$t_OP = abs(df$t_OP)
 ts_emp = ecdf(df$t_OP)
 ts_emp_dat = data.frame(
   t_mid = mid,
@@ -143,7 +147,7 @@ ts_emp_dat = data.frame(
   group = "ts"
 )
 
-# dat_all_ts_cs
+# rbind cs and ts
 dat_all_ts_cs = rbind(ts_emp_dat, cs_emp_dat) %>% 
   mutate(
     group = factor(group, levels = c('cs', 'ts'))
@@ -153,7 +157,7 @@ ggplot(dat_all_ts_cs, aes(x=t_mid,y=prob, fill = as.factor(group))) +
   geom_bar(data = subset(dat_all_ts_cs, group == "ts"), stat = 'identity', position='identity',alpha=0.6) +
   geom_bar(data = subset(dat_all_ts_cs, group == "cs"), stat = 'identity', position='identity',alpha=0.6) +
   scale_fill_manual(
-    values = c("grey", MATBLUE), labels = c("Time Series", "Cross Sectional"), name = NULL
+    values = c("grey", MATBLUE), labels = c("Cross Sectional", "Time Series"), name = NULL
   ) +
   scale_x_continuous(limits=c(0, 15)) +
   chen_theme +
