@@ -4,6 +4,7 @@
 # Load packages -----------------------------------------------------------
 
 library(tidyverse)
+source('setup.r')
 
 pathExhibits = '../../Apps/Overleaf/Publication Bias in Asset Pricing/exhibits/' # for Tom
 pathExhibits = '../results/' # for general purpose use
@@ -141,32 +142,53 @@ cs_emp_dat = data.frame(
 )
 
 # time series frequency
-df$t_OP = abs(df$t_OP)
-ts_emp = ecdf(df$t_OP)
+ts_emp = ecdf(df$t_rep_sign)
 ts_emp_dat = data.frame(
   t_mid = mid,
   prob = (ts_emp(t_right) - ts_emp(t_left)),
   group = "ts"
 )
 
+# EB model fit
+mean_t_pub <- function(sigma) {
+  ((dnorm(2/sigma, mean = 0, sd = 1)) / (1-pnorm(2/sigma, mean =0, sd = 1))) * sigma 
+}  
+vartheta = 1.5^2
+mean_t_pub(sqrt(vartheta + 1))
+mean(df$t_rep_sign[df$t_rep_sign>2])
+1/(vartheta + 1)
+
+
+sigfit = sqrt(vartheta + 1)
+dat_fit = data.frame(
+  t_mid = mid
+  , prob = (pnorm(t_right, sd = sigfit) - pnorm(t_left, sd = sigfit))/
+    (1-pnorm(2, sd = sigfit))*(1-F_emp(2))
+  , group = 'fit'
+) %>% 
+  mutate(prob = if_else(t_mid > 2, prob, 0))
+
+
+
 # rbind cs and ts
-dat_all_ts_cs = rbind(ts_emp_dat, cs_emp_dat) %>% 
+dat_all_ts_cs = rbind(ts_emp_dat, cs_emp_dat, dat_fit) %>% 
   mutate(
-    group = factor(group, levels = c('cs', 'ts'))
-  )
+    group = factor(group, levels = c('ts', 'cs', 'fit'))
+  ) %>% 
+  filter(group %in% c('ts','cs'))
 
 ggplot(dat_all_ts_cs, aes(x=t_mid,y=prob, fill = as.factor(group))) +
-  geom_bar(data = subset(dat_all_ts_cs, group == "ts"), stat = 'identity', position='identity',alpha=0.6) +
-  geom_bar(data = subset(dat_all_ts_cs, group == "cs"), stat = 'identity', position='identity',alpha=0.6) +
+  geom_bar(data = dat_all_ts_cs, stat = 'identity', position='identity',alpha=0.6) +
   scale_fill_manual(
-    values = c("grey", MATBLUE), labels = c("Cross Sectional", "Time Series"), name = NULL
+    values = c(MATRED, 'grey', MATBLUE)
+    , labels = c("Equity Premium", "Cross-Section", 'fit'), name = NULL
   ) +
-  scale_x_continuous(limits=c(0, 15)) +
+  scale_x_continuous(limits=c(0, 15), breaks = seq(-10,20,2)) +
   chen_theme +
   xlab("Reported t-stat") +
-  ylab("Frequency")
+  ylab("Frequency") 
 
-ggsave(paste0(pathExhibits, 'fig_ts_t_stat.png'), width = 8, height = 6)
+
 ggsave(
   "../results/ts_t_stat.pdf",
   width = 12,
@@ -181,6 +203,105 @@ tmp = hist(abs(df$t_OP), breaks = c(1, 2, 3, 4, 5, 6), plot = F)
 tbl = tibble(breaks = tmp$breaks + 1,
              NLarger = nrow(df) - c(cumsum(tmp$counts), nrow(df)),
              Share = (nrow(df) - c(cumsum(tmp$counts), nrow(df)))/nrow(df))
+
+
+
+
+# Fact 3: with fit  ----------------------------------------------------------------
+## make plotting data ----
+
+# set up 
+edge = seq(0,20,0.5)
+t_left = edge[1:(length(edge)-1)]
+t_right = edge[2:length(edge)]
+mid = t_left + diff(edge)/2
+
+edge2  = seq(0,20,0.1)
+t_left2 = edge2[1:(length(edge2)-1)]
+t_right2 = edge2[2:length(edge2)]
+mid2 = t_left2 + diff(edge2)/2
+
+# empirical
+F_emp = ecdf(df$t_rep_sign)
+dat_emp = data.frame(
+  t_mid = mid
+  , prob = (F_emp(t_right) - F_emp(t_left))
+  , group = 'emp'
+)
+
+# null
+rescalefac = mean(diff(edge))/mean(diff(edge2))
+dat_null =data.frame(
+  t_mid = mid2
+  , prob = (pnorm(t_right2) - pnorm(t_left2))/(1-pnorm(2))*rescalefac*(1-F_emp(2))
+  , group = 'null'
+) %>% 
+  mutate(prob = if_else(t_mid > 2, prob, 0))
+
+ 
+# fit
+sigfit = sqrt(1+1.5^2)
+dat_fit = data.frame(
+  t_mid = mid2
+  , prob = (pnorm(t_right2, sd = sigfit) - pnorm(t_left2, sd = sigfit))/
+    (1-pnorm(2, sd = sigfit))*rescalefac*(1-F_emp(2))
+  , group = 'fit'
+) %>% 
+  mutate(prob = if_else(t_mid > 2, prob, 0))
+
+# merge and factor group
+dat_all = rbind(dat_emp,dat_null,dat_miss,dat_fit) %>% 
+  mutate(
+    group = factor(group, levels = c('emp','null','fit'))
+  )
+
+
+## plot --------------------------------------------------------------------
+groupdat = tibble(
+  group = c('null',  'fit')
+  , color = c(MATRED, MATBLUE)
+  , labels = c(
+    TeX('$\\sigma_\\theta$ = 0 (Null)')
+    , TeX('$\\hat{\\sigma}_\\theta$ = $1.5$ (Fit)')
+  )
+  , linetype = c('longdash','solid')
+)
+
+ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
+  geom_bar(stat = 'identity', position='identity',alpha=0.6, aes(fill = group)) +
+  scale_fill_manual(
+    values = 'gray', labels = 'Published', name = NULL
+  ) +
+  scale_color_manual(
+    values = groupdat$color, labels = groupdat$labels, name = NULL
+  ) +
+  scale_linetype_manual(
+    values = groupdat$linetype, labels = groupdat$labels, name = NULL
+  ) +
+  geom_line(
+    data = dat_all %>% filter(group != 'emp')
+    , aes(color = group, linetype = group)
+    , size = 1
+  ) +
+  chen_theme +
+  theme(
+    legend.position = c(75,50)/100
+    # , legend.margin = margin(t = -15, r = 20, b = 0, l = 5)
+  )  +
+  xlab('t-statistic') +
+  ylab('Frequency') +
+  coord_cartesian(xlim = c(0,8), ylim = c(0,0.5))  +
+  scale_x_continuous(breaks = seq(-10,20,2))
+
+ggsave('../results/ts-filling-the-gap.pdf', 
+       width = 12,
+       height = 8,
+       device = cairo_pdf
+)
+
+
+## numbers for paper -------------------------------------------------------
+1/sigfit^2
 
 
 

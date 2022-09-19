@@ -80,12 +80,6 @@ fitcomp %>%
 # Correlation Figures ------------------------------------------------------
 ## correlation dist ====
 
-czret %>% 
-  group_by(signalname) %>% 
-  summarize(
-    
-  )
-  
 
 cormat = cor(czretmat, use = 'pairwise.complete.obs')
 corlong = cormat[lower.tri(cormat)]
@@ -134,6 +128,45 @@ ggsave(
   device = cairo_pdf,
   scale = 0.7
 )
+
+## Check VW ====
+
+tempretmat = cz_alt %>% 
+  filter(group == 'VWforce') %>% 
+  select(signalname, date, ret) %>% 
+  pivot_wider(names_from = signalname, values_from = ret) %>%
+  select(-date) %>% 
+  as.matrix()
+
+cormat = cor(tempretmat, use = 'pairwise.complete.obs')
+
+
+eigval = eigen(cormat)$values
+pct_explained = cumsum(eigval/sum(eigval))*100
+
+plotme = data.table(
+  Num_PC = 1:length(pct_explained), pct_explained
+)
+
+ggplot(plotme, aes(color="blue", x=Num_PC, y = pct_explained)) + geom_line() +
+  coord_cartesian(
+    xlim = c(0,80)
+  ) + 
+  chen_theme +
+  geom_line(size = 1.0) +
+  labs(x="Number of Principal Components", y="% Varaince Explained") +
+  scale_color_manual(values=MATBLUE) +
+  theme(legend.position="none") +
+  scale_y_continuous(breaks = seq(0, 100, 20))
+
+corlong = cormat[lower.tri(cormat)]
+ggplot(data.frame(cor = corlong), aes(x=cor)) +
+  geom_histogram(alpha = .8, fill=MATBLUE) +
+  chen_theme + 
+  labs(x = 'Pairwise Corr Between Monthly Returns'
+       ,y = 'Count')
+
+
 
 
 # Filling the Gap ----------------------------------------------------------------
@@ -229,9 +262,8 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   )  +
   xlab('t-statistic') +
   ylab('Frequency') +
-  coord_cartesian(
-    xlim = c(0,15), ylim = c(0,0.2)
-  )  
+  coord_cartesian(xlim = c(0,15), ylim = c(0,0.2))  +
+  scale_x_continuous(breaks = seq(-10,20,2))
 
 ggsave('../results/filling-the-gap.pdf', 
        width = 12,

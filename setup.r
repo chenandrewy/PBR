@@ -98,6 +98,9 @@ czretmat = czret %>%
   select(-date) %>% 
   as.matrix()
 
+
+
+
 # for liquidity screens
 cz_alt = rbind(
   fread('../data/PredictorAltPorts_HoldPer_12.csv') %>% 
