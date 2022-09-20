@@ -273,7 +273,7 @@ ggsave('../results/filling-the-gap.pdf',
 
 # Lit Comp Figure ----
 ## generate theta data -----
-n = 1e5
+n = 1e6
 
 # ez (really, CZ 20 appendix)
 dat.ez = data.table(
@@ -324,27 +324,32 @@ dat = rbind(dat.hlz,dat.cz, dat.jkp, dat.ez) %>%
 
 
 
-
-## plot -----
+## plot hist -----
 
 groupdat = tibble(
   group =  c('ez','hlz','cz','jkp')
   , color = c( MATBLUE, MATRED, MATYELLOW, 'gray')
   , labels = c(
     TeX("Simple Normal")
-    , "Harvey-Liu-Zhu"
-    , "Chen-Zimmerman"
-    , "Jensen-Kelly-Pederson"
+    , "Harvey-Liu-Zhu 2016"
+    , "Chen-Zimmerman 2020"
+    , "Jensen-Kelly-Pederson 2022"
   )
-  , linetype = c(1,2,3,4)
+  , linetype = c('solid', 'longdash','dotdash','dotted')
 )
 
+edge = seq(-10 - 0.25,10+0.25 , 0.25)
+plotme = dat %>% 
+  group_by(paper) %>% 
+  filter(theta < max(edge), theta > min(edge)) %>% 
+  summarize(
+    den = hist(theta, breaks = edge, plot = F)$density
+    , theta = hist(theta, breaks = edge, plot = F)$mids
+  )
 
 
-ggplot(dat, aes(x=theta, linetype = paper, color = paper)) +
-  geom_density(
-    position = 'identity', alpha = 0.6, adjust = 1.2, size = 1.2, key_glyph = draw_key_path
-  ) +
+ggplot(plotme, aes(x=theta, y=den, linetype = paper, color = paper)) +
+  geom_line(size = 1.25) + 
   scale_color_manual(
     values = groupdat$color, labels = groupdat$labels, name = NULL
   ) +
@@ -352,19 +357,19 @@ ggplot(dat, aes(x=theta, linetype = paper, color = paper)) +
     values = groupdat$linetype, labels = groupdat$labels, name = NULL
   ) +
   chen_theme +
-  theme(legend.position = c(.2, .75)) + 
-  coord_cartesian(xlim = c(-8,8), ylim = c(0, 0.3)) +  
+  theme(legend.position = c(.23, .75), legend.key.width = unit(2,'cm')) + 
+  coord_cartesian(xlim = c(-8,8), ylim = c(0, 0.5)) +  
   scale_x_continuous(breaks = seq(-20,20,2)) +
   xlab(TeX("Corrected t-statistic $\\theta_i$"))  +
-  ylab('Density')
+  ylab('Density')  
+
 
 ggsave(
-  "../results/lit-comp.pdf",
+  "../results/lit-comp-hist.pdf",
   width = 12,
   height = 8,
   device = cairo_pdf
 )
-
 
 
 
