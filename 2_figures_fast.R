@@ -1,7 +1,7 @@
 # Setup -------------------------------------------------------------------
 rm(list = ls())
 source('setup.r')
- 
+
 
 
 # Replication Figure ------------------------------------------
@@ -80,12 +80,6 @@ fitcomp %>%
 # Correlation Figures ------------------------------------------------------
 ## correlation dist ====
 
-czret %>% 
-  group_by(signalname) %>% 
-  summarize(
-    
-  )
-  
 
 cormat = cor(czretmat, use = 'pairwise.complete.obs')
 corlong = cormat[lower.tri(cormat)]
@@ -134,6 +128,45 @@ ggsave(
   device = cairo_pdf,
   scale = 0.7
 )
+
+## Check VW ====
+
+tempretmat = cz_alt %>% 
+  filter(group == 'VWforce') %>% 
+  select(signalname, date, ret) %>% 
+  pivot_wider(names_from = signalname, values_from = ret) %>%
+  select(-date) %>% 
+  as.matrix()
+
+cormat = cor(tempretmat, use = 'pairwise.complete.obs')
+
+
+eigval = eigen(cormat)$values
+pct_explained = cumsum(eigval/sum(eigval))*100
+
+plotme = data.table(
+  Num_PC = 1:length(pct_explained), pct_explained
+)
+
+ggplot(plotme, aes(color="blue", x=Num_PC, y = pct_explained)) + geom_line() +
+  coord_cartesian(
+    xlim = c(0,80)
+  ) + 
+  chen_theme +
+  geom_line(size = 1.0) +
+  labs(x="Number of Principal Components", y="% Varaince Explained") +
+  scale_color_manual(values=MATBLUE) +
+  theme(legend.position="none") +
+  scale_y_continuous(breaks = seq(0, 100, 20))
+
+corlong = cormat[lower.tri(cormat)]
+ggplot(data.frame(cor = corlong), aes(x=cor)) +
+  geom_histogram(alpha = .8, fill=MATBLUE) +
+  chen_theme + 
+  labs(x = 'Pairwise Corr Between Monthly Returns'
+       ,y = 'Count')
+
+
 
 
 # Filling the Gap ----------------------------------------------------------------
@@ -229,15 +262,14 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   )  +
   xlab('t-statistic') +
   ylab('Frequency') +
-  coord_cartesian(
-    xlim = c(0,15), ylim = c(0,0.2)
-  )  
+  coord_cartesian(xlim = c(0,15), ylim = c(0,0.2))  +
+  scale_x_continuous(breaks = seq(-10,20,2))
 
 ggsave('../results/filling-the-gap.pdf', 
        width = 12,
        height = 8,
        device = cairo_pdf
-      )
+)
 
 # Lit Comp Figure ----
 ## generate theta data -----
@@ -309,7 +341,7 @@ groupdat = tibble(
 
 
 
-ggplot(dat, aes(x=theta, color = paper, linetype = paper)) +
+ggplot(dat, aes(x=theta, linetype = paper, color = paper)) +
   geom_density(
     position = 'identity', alpha = 0.6, adjust = 1.2, size = 1.2, key_glyph = draw_key_path
   ) +
@@ -318,7 +350,7 @@ ggplot(dat, aes(x=theta, color = paper, linetype = paper)) +
   ) +
   scale_linetype_manual(
     values = groupdat$linetype, labels = groupdat$labels, name = NULL
-  ) +                                                     
+  ) +
   chen_theme +
   theme(legend.position = c(.2, .75)) + 
   coord_cartesian(xlim = c(-8,8), ylim = c(0, 0.3)) +  
@@ -419,9 +451,9 @@ plotme = dat %>%
 
 plotme = tibble(
   value = czsum$tstat[czsum$samptype == 'in-samp' & czsum$tstat > 0]
-                , name = 't') %>% rbind(
-  tibble(value = dat$theta[dat$t>2], name = 'theta')
-)
+  , name = 't') %>% rbind(
+    tibble(value = dat$theta[dat$t>2], name = 'theta')
+  )
 
 plotmeans = plotme %>% group_by(name) %>% summarize(mean = mean(value)) %>% 
   pivot_wider(names_from = name, values_from = mean)
@@ -489,7 +521,7 @@ ggplot(
   geom_line(
     data = datsum, aes(x=Etselect, y=Etheta, linetype = "Shrinkage Correction")
   ) +
-  geom_abline(aes(slope = 1, intercept = 0, linetype = "Naive Estimate (45 deg)"), key_glyph = draw_key_path) +
+  geom_abline(aes(slope = 1, intercept = 0, linetype = "Naive Estimate (45 deg)")) +
   scale_linetype_manual(values = c(1,2)) +
   scale_color_manual(values=c(MATBLUE, MATRED)) +
   coord_cartesian(
@@ -576,7 +608,7 @@ ggplot(dat_emp, aes(x=t_mid,y=prob)) +
   geom_vline(
     xintercept = mean(czsum$tstat[czsum$samptype == "in-samp"]), color = 'darkgrey'
     , size = 1
-    ) +
+  ) +
   geom_vline(xintercept = mean(dat$theta[dat$pub]), color = MATBLUE
              , size = 1) +
   geom_vline(xintercept = 0, color = MATRED
@@ -619,7 +651,7 @@ mu = rexp(n, 1/55.5); mu[!v] = 0
 theta = mu / se
 theta_scatter = theta; theta_scatter[!v] = rnorm(sum(!v), 0, 0.1)
 pubnoise = runif(n)
- 
+
 
 # simulate
 dat = data.table(
@@ -779,8 +811,8 @@ holm_05 = dat[sample(1:n,ntotal), ] %>% select(tabs) %>%
   filter(signif == F) %>% 
   filter(row_number() == 1) %>% 
   pull(tabs)
-  
-  
+
+
 
 
 # settings for both panels here
@@ -1171,4 +1203,3 @@ ggsave(
   scale = 0.9,
   device = cairo_pdf
 )
-
