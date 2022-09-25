@@ -913,6 +913,95 @@ dat %>%
 
 
 
+## plot scatter bonferroni ----
+
+# for ease of presentation
+
+ntotal = 300/mean(dat$pub)
+
+set.seed(430)
+
+holm_05 = dat[sample(1:n,ntotal), ] %>% select(tabs) %>% 
+  arrange(desc(tabs)) %>% 
+  mutate(
+    pval = 2*pnorm(-tabs)
+    , k = row_number()
+    , signif = pval < 0.05/(ntotal + 1 - k)
+  ) %>% 
+  filter(signif == F) %>% 
+  filter(row_number() == 1) %>% 
+  pull(tabs)
+
+bonf_05 = qnorm(1-0.05/2/ntotal)
+
+
+# settings for both panels here
+nplot = 1500
+set.seed(4)
+
+texty = 8
+textsize = 7
+
+linesize = 1.1
+
+
+small = dat[sample(1:n,nplot),]
+
+
+
+ggplot(small, aes(x=tselect,y=theta_scatter)) +
+  geom_point(aes(group = v, color = v, shape = v), size = 2.5) +
+  scale_shape_manual(values = c(16, 1)) +
+  scale_color_manual(values=c(MATBLUE, MATRED)) +
+  # HURDLES
+  geom_vline(xintercept = 1.96, size = linesize) +
+  annotate(geom="text", label="Classical Hurdle", 
+           x=1.95, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = 'black'
+  ) +
+  geom_vline(xintercept = hurdle_05, size = linesize, color = 'dimgrey', linetype = 'longdash') +    
+  annotate(geom="text", 
+           label="FDR = 5%", 
+           x=24/10, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = 'dimgrey'
+  ) +  
+  geom_vline(xintercept = hurdle_01, size = linesize, color = MATRED, linetype = 'dotdash') +  
+  annotate(geom="text", 
+           label="FDR = 1%", 
+           x=3, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = MATRED
+  ) +
+  geom_vline(xintercept = bonf_05, size = linesize, color = 'darkorchid', linetype = 'dotted') +
+  annotate(geom="text", 
+           label=TeX("Bonferroni 5\\%"), 
+           x=holm_05, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = 'darkorchid'
+  ) +  
+  # SHRINKAGE
+  # geom_abline(aes(slope = 1, intercept = 0, linetype = "Naive (45 deg)")) +
+  # geom_line(
+  #   data = datsum, aes(x=Etselect, y=Etheta, linetype = "Shrinkage")
+  # ) +
+  # scale_linetype_manual(values = c(1,2)) +
+  coord_cartesian(xlim = c(-0.1,10), ylim = c(-0.5,10)) +
+  scale_x_continuous(breaks = seq(-10,20,2)) +
+  scale_y_continuous(breaks = seq(-10,20,2)) +  
+  chen_theme +
+  theme(
+    legend.position = c(.80, .15)
+    , panel.grid.major = element_blank()
+    , panel.grid.minor = element_blank()
+  ) +
+  xlab(TeX("Absolute t-statistic $|\\t_i|$")) +
+  ylab(TeX("Corrected t-statistic $\\theta_i$"))
+
+ggsave('../results/hlz-scatter-bonf.pdf', 
+       width = 12,
+       height = 8,
+       device = cairo_pdf
+)
+
+small %>% filter(tabs > hurdle_01) %>% summarize(mean(v == 'False Predictor'))
 
 
 
@@ -1208,3 +1297,45 @@ ggsave(
   scale = 0.9,
   device = cairo_pdf
 )
+
+
+
+# Mispricing Or Risk ------------------------------------------------------
+
+# data is not public yet, sorry
+signalcat = readxl::read_excel('D:/Google Drive/Work/PBR/Shared Data/MispricingOrRisk.xlsx', sheet = 'Risk or Mispricing') %>% 
+  select(Authors, Year, LongDescription, random, Cat.Struct)
+
+
+small = signalcat %>% filter(random <= 0.45, !is.na(Cat.Struct)) 
+
+by_year = small %>% 
+  group_by(Year) %>% 
+  summarize(
+    n_risk = sum(Cat.Struct == 'risk')
+    , n_mispricing = sum(Cat.Struct == 'mispricing')
+    , n_agnostic = sum(Cat.Struct == 'agnostic')
+    , n_total = n()
+  ) 
+
+
+tab = by_year %>% 
+  mutate(
+    samp = if_else(Year > 2005, 'recent', 'old')
+  ) %>% 
+  group_by(samp) %>% 
+  summarize(across(starts_with('n_'), sum )) %>% 
+  rbind(
+    by_year %>% summarize(across(starts_with('n_'), sum )) %>% 
+      mutate(samp = 'full')
+  ) %>% 
+  mutate(
+    samp = factor(samp, levels = c('full','recent','old'))
+  ) %>% 
+  arrange(samp) %>% 
+  mutate(
+    across(n_risk:n_agnostic, ~.x/n_total*100, .names = "pct_{col}")
+  )
+
+
+write.csv(tab, '../results/tab_mispricing.csv')
