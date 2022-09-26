@@ -52,7 +52,7 @@ fitcomp %>%
   ) +
   labs(x = 't-stat Original Paper'
        , y = 't-stat Replicated')  +
-  coord_trans(x='log10', y='log10', xlim = c(1.5, 17), ylim = c(1.5, 15)) +
+  coord_trans(x='log10', y='log10', xlim = c(1.5, 16), ylim = c(1.5, 16)) +
   scale_x_continuous(breaks=breaks) +
   scale_y_continuous(breaks=breaks) 
 
@@ -333,7 +333,7 @@ groupdat = tibble(
     TeX("Simple Normal")
     , "Harvey-Liu-Zhu 2016"
     , "Chen-Zimmerman 2020"
-    , "Jensen-Kelly-Pederson 2022"
+    , "Jensen-Kelly-Pedersen 2022"
   )
   , linetype = c('solid', 'longdash','dotdash','dotted')
 )

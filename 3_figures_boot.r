@@ -76,7 +76,7 @@ bootdat %>%
     labels=c('Original Sample', 'Years 1-3 Post Sample'),
     values = c(MATBLUE, 'grey')
   ) +
-  labs(x='Pooled Mean Return (bps monthly)', y='Density') +
+  labs(x='Pooled Mean Return (bps monthly)', y='Frequency') +
   geom_vline(xintercept = 0) +
   scale_x_continuous(breaks = seq(0,125,25))+
   geom_vline(xintercept = mean_oos/mean_insamp*100)
