@@ -70,7 +70,8 @@ bootdat %>%
   ) +
   chen_theme + 
   theme(
-    legend.position = c(.25, .8)
+    legend.position = c(.28, .8)
+    , legend.text = element_text(size = 19)
   ) + 
   scale_fill_manual(
     labels=c('Original Sample', 'Years 1-3 Post Sample'),
@@ -82,10 +83,8 @@ bootdat %>%
   geom_vline(xintercept = mean_oos/mean_insamp*100)
 
 ggsave(
-  "../results/MPrep_scaled.pdf",
-  width = 12,
-  height = 8,
-  device = cairo_pdf
+  "../results/MPrep_scaled.pdf", width = 12, height = 8, scale = 0.8
+  , device = cairo_pdf
 )
 
 

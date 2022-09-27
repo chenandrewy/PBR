@@ -242,13 +242,13 @@ groupdat = tibble(
 ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   geom_bar(stat = 'identity', position='identity',alpha=0.6, aes(fill = group)) +
   scale_fill_manual(
-    values = 'gray', labels = 'Published', name = NULL
+    values = 'gray', labels = 'Data', name = NULL
   ) +
   scale_color_manual(
-    values = groupdat$color, labels = groupdat$labels, name = NULL
+    values = groupdat$color, labels = groupdat$labels, name = 'Models'
   ) +
   scale_linetype_manual(
-    values = groupdat$linetype, labels = groupdat$labels, name = NULL
+    values = groupdat$linetype, labels = groupdat$labels, name = 'Models'
   ) +
   geom_line(
     data = dat_all %>% filter(group != 'emp')
@@ -259,8 +259,10 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   theme(
     legend.position = c(75,50)/100
     # , legend.margin = margin(t = -15, r = 20, b = 0, l = 5)
+    , legend.title = element_text(size = 19, hjust = 0.1)
+    , legend.spacing.y = unit(0.3, 'cm')
   )  +
-  xlab('t-statistic') +
+  xlab(TeX("Published t-statistic $\\t_i$")) +
   ylab('Frequency') +
   coord_cartesian(xlim = c(0,15), ylim = c(0,0.2))  +
   scale_x_continuous(breaks = seq(-10,20,2))
@@ -351,17 +353,19 @@ plotme = dat %>%
 ggplot(plotme, aes(x=theta, y=den, linetype = paper, color = paper)) +
   geom_line(size = 1.25) + 
   scale_color_manual(
-    values = groupdat$color, labels = groupdat$labels, name = NULL
+    values = groupdat$color, labels = groupdat$labels, name = groupdat$name
   ) +
   scale_linetype_manual(
-    values = groupdat$linetype, labels = groupdat$labels, name = NULL
+    values = groupdat$linetype, labels = groupdat$labels, name = groupdat$name
   ) +
   chen_theme +
-  theme(legend.position = c(.23, .75), legend.key.width = unit(2,'cm')) + 
+  theme(
+    legend.position = c(.23, .75), legend.key.width = unit(2,'cm')
+  ) + 
   coord_cartesian(xlim = c(-8,8), ylim = c(0, 0.5)) +  
   scale_x_continuous(breaks = seq(-20,20,2)) +
   xlab(TeX("Corrected t-statistic $\\theta_i$"))  +
-  ylab('Density')  
+  ylab('Frequency')  
 
 
 ggsave(
@@ -503,7 +507,8 @@ ggplot(plotme, aes(x = value, group = name))   +
   theme(legend.position = c(75,60)/100) +
   coord_cartesian(xlim = c(-1, 15), ylim = c(0, 0.35)) +
   scale_x_continuous(breaks = seq(-10,20,2)) +  
-  xlab('Published t-statistic') + ylab('Density')
+  xlab(TeX('Published t-statistic ($\\t_i$ or $\\theta_i$)')) + 
+  ylab('Frequency')
 
 
 ggsave('../results/monte-carlo-ez-bar.pdf', 
@@ -647,7 +652,11 @@ dat %>%
 
 ## simulate hlz ----------------------------------------------------------------
 
-n = 1e6
+nport = 1e4
+nsim = 200
+n = nport*nsim
+
+set.seed(120)
 
 # hlz baseline
 v  = runif(n) > 0.444
@@ -657,10 +666,29 @@ theta = mu / se
 theta_scatter = theta; theta_scatter[!v] = rnorm(sum(!v), 0, 0.1)
 pubnoise = runif(n)
 
+# Fabian Winkler's fast method for common correlations
+rho = 0.2
+sigc = sqrt(rho)
+sige = sqrt(1-sigc^2)
 
-# simulate
+# simulate common component (in blocks)
+c = matrix(rnorm(nsim, 0, sigc), nrow = nsim, ncol = nport) %>% t() %>% 
+  as.vector
+# add idiosyncratic noise
+e = rnorm(nport*nsim, 0, sige)
+Z = c + e
+
+  # sanity check
+  # c2 = rnorm(n, 0, sigc)
+  # z1 = c2 + rnorm(n, 0, sige)
+  # z2 = c2 + rnorm(n, 0, sige)
+  # cor(z2,z1)
+  # var(z1)
+  # var(z2)
+
+# assemble into data table
 dat = data.table(
-  Z = rnorm(n), theta, v, pubnoise, theta_scatter
+  Z, theta, v, pubnoise, theta_scatter
 ) %>% 
   mutate(
     t = theta + Z
@@ -752,7 +780,7 @@ ggplot(plotme, aes(x = value, group = name))   +
   scale_fill_manual(
     values = c('dimgrey', MATBLUE)
     , labels = c(TeX('Observed $(|t_i||pub_i)$')
-                 ,TeX('Corrected ($\\hat{\\theta}_i|pub_i$)'))
+                 ,TeX('Corrected ($|\\hat{\\theta}_i||pub_i$)'))
     , name = NULL
   ) +  
   # shrinkage
@@ -780,7 +808,8 @@ ggplot(plotme, aes(x = value, group = name))   +
   theme(legend.position = c(75,60)/100) +
   coord_cartesian(xlim = c(-1, 15), ylim = c(0, 0.35)) +
   scale_x_continuous(breaks = seq(-10,20,2)) +  
-  xlab('Published Absolute t-statistic') + ylab('Density')
+  xlab(TeX('Published Absolute t-statistic ($|\\t_i|$ or $|\\theta_i|$)')) + 
+  ylab('Frequency')
 
 
 ggsave('../results/monte-carlo-hlz-bar.pdf', 
@@ -800,13 +829,21 @@ plotme %>% filter(name == 'theta') %>% summarize(mean(value<=0)*100)
 
 ## plot scatter  ----
 
-# holm algo
 
-ntotal = 300/mean(dat$pub)
+# user
+# ntotal = 300/mean(dat$pub)
+ntotal = 300/mean(dat$tabs > 1.96)
+texty = 8
+textsize = 7
+linesize = 1.1
 
+
+# sample for ez plotting interpretation (roughly 300 pubs)
 set.seed(430)
+small = dat[sample(1:n,ntotal),]
 
-holm_05 = dat[sample(1:n,ntotal), ] %>% select(tabs) %>% 
+# holm algo
+holm_05 = small %>% select(tabs) %>% 
   arrange(desc(tabs)) %>% 
   mutate(
     pval = 2*pnorm(-tabs)
@@ -816,21 +853,6 @@ holm_05 = dat[sample(1:n,ntotal), ] %>% select(tabs) %>%
   filter(signif == F) %>% 
   filter(row_number() == 1) %>% 
   pull(tabs)
-
-
-
-
-# settings for both panels here
-nplot = 1500
-set.seed(4)
-
-texty = 8
-textsize = 7
-
-linesize = 1.1
-
-
-small = dat[sample(1:n,nplot),]
 
 
 
@@ -878,7 +900,7 @@ ggplot(small, aes(x=tselect,y=theta_scatter)) +
     , panel.grid.minor = element_blank()
   ) +
   xlab(TeX("Absolute t-statistic $|\\t_i|$")) +
-  ylab(TeX("Corrected t-statistic $\\theta_i$"))
+  ylab(TeX("Standardized Expected Return $\\theta_i$"))
 
 ggsave('../results/hlz-scatter.pdf', 
        width = 12,
@@ -902,14 +924,20 @@ dat %>%
 
 
 dat %>% 
-  filter(tselect > 2,  tselect < hurdle_01) %>% 
+  filter(tselect > 1.96,  tselect < hurdle_01) %>% 
   summarize(
     mean(t)
     , mean(theta)
     , mean(v == 'False Predictor')    
+    , mean(v == 'True Predictor')    
     , mean(theta) / mean(t)
   )
 
+small %>% 
+  filter(tselect > 1.96,  tselect < hurdle_01) %>% 
+  summarize(
+    n()
+  )
 
 
 
@@ -1190,113 +1218,4 @@ signaldoc %>%
   summarize(
     mean(between)/365
   )
-
-# Gregorian Time Returns ----------------------------------------------------------------
-
-rollmonths = 12*3
-
-# find rolling stats
-tempret = czret %>% 
-  select(signalname, date, ret, sampend) %>% 
-  mutate(
-    samp_time = year(date) + month(date)/12
-    - (year(sampend) + month(sampend)/12)
-  )
-rbar_time = tempret %>% 
-  arrange(date) %>% 
-  group_by(date) %>% 
-  summarize(
-    rbar = mean(ret)*100/.67, nsignal = dplyr::n()
-  ) %>% 
-  mutate(
-    roll_rbar = rollmean(rbar, k = rollmonths, fill = NA, align = 'right')
-  )
-
-
-# big pic stats
-mean_old = rbar_time %>% filter(date >= 2000)
-
-
-ggplot(rbar_time, aes(x = date, y = roll_rbar)) +
-  geom_line() 
-
-
-
-# YZ Figure ====
-
-# set up 
-edge = seq(0,20,0.5)
-t_left = edge[1:(length(edge)-1)]
-t_right = edge[2:length(edge)]
-mid = t_left + diff(edge)/2
-
-edge2  = seq(0,20,0.1)
-t_left2 = edge2[1:(length(edge2)-1)]
-t_right2 = edge2[2:length(edge2)]
-mid2 = t_left2 + diff(edge2)/2
-
-# empirical
-F_emp = ecdf(yzsum$tstat)
-dat_emp = data.frame(
-  t_mid = mid
-  , prob = (F_emp(t_right) - F_emp(t_left))
-  , group = 'emp'
-)
-
-# null
-rescalefac = mean(diff(edge))/mean(diff(edge2))
-dat_null =data.frame(
-  t_mid = mid2
-  , prob = (pnorm(t_right2) - pnorm(t_left2))*rescalefac*2
-  , group = 'null'
-) 
-
-
-
-
-## plot --------------------------------------------------------------------
-groupdat = tibble(
-  group = c('null', 'fit')
-  , color = c(MATRED, MATBLUE)
-  , labels = c(
-    TeX('Null (Normal(0,1))')
-  )
-  , linetype = c('dashed','solid')
-)
-
-
-ggplot(dat_emp, aes(x=t_mid,y=prob)) +
-  geom_bar(stat='identity',position='identity',alpha=0.6, aes(fill = group)) +
-  scale_fill_manual(
-    values = 'gray', labels = 'Data-Mined', name = NULL
-  ) +
-  scale_color_manual(
-    values = groupdat$color, labels = groupdat$labels, name = NULL
-  ) +
-  scale_linetype_manual(
-    values = groupdat$linetype, labels = groupdat$labels, name = NULL
-  ) +
-  geom_line(
-    data = dat_null, aes(color = group, linetype = group)
-  ) +
-  chen_theme +
-  theme(
-    legend.position = c(75,75)/100
-    # , legend.margin = margin(t = -15, r = 20, b = 0, l = 5)
-  )  +
-  xlab(TeX('Absolute t-statistic $|t_i|$')) +
-  ylab('Frequency') +
-  coord_cartesian(
-    xlim = c(0,7), ylim = c(0,0.4)
-  )  
-
-ggsave(
-  "../results/yan-zheng.pdf",
-  width = 12,
-  height = 8,
-  scale = 0.9,
-  device = cairo_pdf
-)
-
-
 
