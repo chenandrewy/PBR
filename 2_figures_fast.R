@@ -239,7 +239,7 @@ groupdat = tibble(
   , linetype = c('dotted','longdash','solid')
 )
 
-ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
+p1 = ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   geom_bar(stat = 'identity', position='identity',alpha=0.6, aes(fill = group)) +
   scale_fill_manual(
     values = 'gray', labels = 'Data', name = NULL
@@ -249,11 +249,6 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   ) +
   scale_linetype_manual(
     values = groupdat$linetype, labels = groupdat$labels, name = 'Models'
-  ) +
-  geom_line(
-    data = dat_all %>% filter(group != 'emp')
-    , aes(color = group, linetype = group)
-    , size = 1
   ) +
   chen_theme +
   theme(
@@ -265,13 +260,29 @@ ggplot(dat_all %>%  filter(group == 'emp'), aes(x=t_mid,y=prob)) +
   xlab(TeX("Published t-statistic $\\t_i$")) +
   ylab('Frequency') +
   coord_cartesian(xlim = c(0,15), ylim = c(0,0.2))  +
-  scale_x_continuous(breaks = seq(-10,20,2))
+  scale_x_continuous(breaks = seq(-10,20,2)) 
 
-ggsave('../results/filling-the-gap.pdf', 
-       width = 12,
-       height = 8,
-       device = cairo_pdf
-)
+p2 = p1 +
+  geom_line(
+    data = dat_all %>% filter(group == 'null') , aes(color = group, linetype = group), size = 1
+  ) 
+
+p3 = p1 +
+  geom_line(
+    data = dat_all %>% filter(group %in% c('null','miss')) 
+    , aes(color = group, linetype = group), size = 1
+  ) 
+
+p4 = p1 +
+  geom_line(
+    data = dat_all %>% filter(group %in% c('null','miss','fit')) 
+    , aes(color = group, linetype = group), size = 1
+  ) 
+
+ggsave('../results/filling-the-gap-1.pdf', p1, width = 12,height = 8,device = cairo_pdf)
+ggsave('../results/filling-the-gap-2.pdf', p2, width = 12,height = 8,device = cairo_pdf)
+ggsave('../results/filling-the-gap-3.pdf', p3, width = 12,height = 8,device = cairo_pdf)
+ggsave('../results/filling-the-gap.pdf', p4, width = 12,height = 8,device = cairo_pdf)
 
 # Lit Comp Figure ----
 ## generate theta data -----
@@ -329,15 +340,15 @@ dat = rbind(dat.hlz,dat.cz, dat.jkp, dat.ez) %>%
 ## plot hist -----
 
 groupdat = tibble(
-  group =  c('ez','hlz','cz','jkp')
-  , color = c( MATBLUE, MATRED, MATYELLOW, 'gray')
+  group =  c('ez','cz','jkp','hlz')
+  , color = c( MATBLUE, MATYELLOW, 'gray', MATRED)
   , labels = c(
-    TeX("Simple Normal")
-    , "Harvey-Liu-Zhu 2016"
+    TeX("Normal(0, $3^2$)")
     , "Chen-Zimmerman 2020"
     , "Jensen-Kelly-Pedersen 2022"
+    , "Harvey-Liu-Zhu 2016"    
   )
-  , linetype = c('solid', 'longdash','dotdash','dotted')
+  , linetype = c('solid', 'dotdash','dotted', 'longdash')
 )
 
 edge = seq(-10 - 0.25,10+0.25 , 0.25)
@@ -347,16 +358,18 @@ plotme = dat %>%
   summarize(
     den = hist(theta, breaks = edge, plot = F)$density
     , theta = hist(theta, breaks = edge, plot = F)$mids
+  )  %>% 
+  mutate(
+    paper = factor(paper, levels = c('ez','cz','jkp','hlz'))
   )
 
-
-ggplot(plotme, aes(x=theta, y=den, linetype = paper, color = paper)) +
+p1 = ggplot(plotme %>% filter(paper == 'ez'), aes(x=theta, y=den, linetype = paper, color = paper)) +
   geom_line(size = 1.25) + 
   scale_color_manual(
-    values = groupdat$color, labels = groupdat$labels, name = groupdat$name
+    values = groupdat$color, labels = groupdat$labels, name = groupdat$group
   ) +
   scale_linetype_manual(
-    values = groupdat$linetype, labels = groupdat$labels, name = groupdat$name
+    values = groupdat$linetype, labels = groupdat$labels, name = groupdat$group
   ) +
   chen_theme +
   theme(
@@ -367,13 +380,46 @@ ggplot(plotme, aes(x=theta, y=den, linetype = paper, color = paper)) +
   xlab(TeX("Corrected t-statistic $\\theta_i$"))  +
   ylab('Frequency')  
 
+p2 = ggplot(plotme %>% filter(paper != 'hlz')
+            , aes(x=theta, y=den, linetype = paper, color = paper)) +
+  geom_line(size = 1.25) + 
+  scale_color_manual(
+    values = groupdat$color, labels = groupdat$labels, name = groupdat$group
+  ) +
+  scale_linetype_manual(
+    values = groupdat$linetype, labels = groupdat$labels, name = groupdat$group
+  ) +
+  chen_theme +
+  theme(
+    legend.position = c(.23, .75), legend.key.width = unit(2,'cm')
+  ) + 
+  coord_cartesian(xlim = c(-8,8), ylim = c(0, 0.5)) +  
+  scale_x_continuous(breaks = seq(-20,20,2)) +
+  xlab(TeX("Corrected t-statistic $\\theta_i$"))  +
+  ylab('Frequency')  
 
-ggsave(
-  "../results/lit-comp-hist.pdf",
-  width = 12,
-  height = 8,
-  device = cairo_pdf
-)
+p3 = ggplot(plotme, aes(x=theta, y=den, linetype = paper, color = paper)) +
+  geom_line(size = 1.25) + 
+  scale_color_manual(
+    values = groupdat$color, labels = groupdat$labels, name = groupdat$group
+  ) +
+  scale_linetype_manual(
+    values = groupdat$linetype, labels = groupdat$labels, name = groupdat$group
+  ) +
+  chen_theme +
+  theme(
+    legend.position = c(.23, .75), legend.key.width = unit(2,'cm')
+  ) + 
+  coord_cartesian(xlim = c(-8,8), ylim = c(0, 0.5)) +  
+  scale_x_continuous(breaks = seq(-20,20,2)) +
+  xlab(TeX("Corrected t-statistic $\\theta_i$"))  +
+  ylab('Frequency')  
+
+ 
+
+ggsave("../results/lit-comp-hist-1.pdf",p1, width = 12,height = 8,device = cairo_pdf)
+ggsave("../results/lit-comp-hist-2.pdf",p2, width = 12,height = 8,device = cairo_pdf)
+ggsave("../results/lit-comp-hist.pdf",p3, width = 12,height = 8,device = cairo_pdf)
 
 
 
@@ -471,7 +517,8 @@ color_theta = MATBLUE
 color_emp = 'dimgrey'
 textsize = 7
 
-ggplot(plotme, aes(x = value, group = name))   +
+p1 = ggplot(plotme %>% filter(name == 't')
+            , aes(x = value, group = name))   +
   geom_histogram(
     aes(y = ..density.., fill = name), position = 'identity', alpha = 0.5
     , breaks = c(seq(-1,16,0.5)) , color = 'white'
@@ -481,7 +528,34 @@ ggplot(plotme, aes(x = value, group = name))   +
     , labels = c(TeX('Observed $(t_i|pub_i)$')
                  ,TeX('Corrected ($\\hat{\\theta}_i|pub_i$)'))
     , name = NULL
-  ) +  
+  )  +  
+  chen_theme  +
+  theme(legend.position = c(75,60)/100) +
+  coord_cartesian(xlim = c(-1, 15), ylim = c(0, 0.35)) +
+  scale_x_continuous(breaks = seq(-10,20,2)) +  
+  xlab(TeX('Published t-statistic ($\\t_i$ or $\\theta_i$)')) + 
+  ylab('Frequency')  
+
+p2 = ggplot(plotme 
+                 , aes(x = value, group = name))   +
+  geom_histogram(
+    aes(y = ..density.., fill = name), position = 'identity', alpha = 0.5
+    , breaks = c(seq(-1,16,0.5)) , color = 'white'
+  ) +
+  scale_fill_manual(
+    values = c('dimgrey', MATBLUE)
+    , labels = c(TeX('Observed $(t_i|pub_i)$')
+                 ,TeX('Corrected ($\\hat{\\theta}_i|pub_i$)'))
+    , name = NULL
+  )  +  
+  chen_theme  +
+  theme(legend.position = c(75,60)/100) +
+  coord_cartesian(xlim = c(-1, 15), ylim = c(0, 0.35)) +
+  scale_x_continuous(breaks = seq(-10,20,2)) +  
+  xlab(TeX('Published t-statistic ($\\t_i$ or $\\theta_i$)')) + 
+  ylab('Frequency')  
+
+p3 = p2 +
   # shrinkage
   geom_vline(xintercept = plotmeans$t, color = 'dimgrey', size = 1
              , linetype = 'dashed') +
@@ -490,7 +564,9 @@ ggplot(plotme, aes(x = value, group = name))   +
   annotate(geom="text"
            , label='<-- Shrinkage',
            x=51/10, y=0.32, vjust=-1,
-           family = "Palatino Linotype",  angle = 0, size = textsize, color = 'black' ) +
+           family = "Palatino Linotype",  angle = 0, size = textsize, color = 'black' ) 
+
+p4 = p3 + 
   # fdr
   geom_vline(xintercept = 0.25/2, color = MATRED, size = 1) +
   annotate(geom="text"
@@ -502,17 +578,13 @@ ggplot(plotme, aes(x = value, group = name))   +
            , label="True ->",
            x=10/10, y=0.28, vjust=-1,
            family = "Palatino Linotype",  size = textsize, color = 'black'
-  ) +  
-  chen_theme  +
-  theme(legend.position = c(75,60)/100) +
-  coord_cartesian(xlim = c(-1, 15), ylim = c(0, 0.35)) +
-  scale_x_continuous(breaks = seq(-10,20,2)) +  
-  xlab(TeX('Published t-statistic ($\\t_i$ or $\\theta_i$)')) + 
-  ylab('Frequency')
+  )
 
 
-ggsave('../results/monte-carlo-ez-bar.pdf', 
-       width = 14, height = 8, device = cairo_pdf, scale = 0.8)
+ggsave('../results/monte-carlo-ez-bar-1.pdf', p1, width = 14, height = 8, device = cairo_pdf, scale = 0.8)
+ggsave('../results/monte-carlo-ez-bar-2.pdf', p2, width = 14, height = 8, device = cairo_pdf, scale = 0.8)
+ggsave('../results/monte-carlo-ez-bar-3.pdf', p3, width = 14, height = 8, device = cairo_pdf, scale = 0.8)
+ggsave('../results/monte-carlo-ez-bar.pdf', p4, width = 14, height = 8, device = cairo_pdf, scale = 0.8)
 
 
 ## plot ez scatter  --------------------------------------------------------------------
@@ -555,7 +627,6 @@ ggsave('../results/monte-carlo-ez.pdf',
        height = 8,
        device = cairo_pdf
 )
-
 
 
 
@@ -653,10 +724,10 @@ dat %>%
 ## simulate hlz ----------------------------------------------------------------
 
 nport = 1e4
-nsim = 200
+nsim = 500
 n = nport*nsim
 
-set.seed(120)
+set.seed(121)
 
 # hlz baseline
 v  = runif(n) > 0.444
@@ -772,7 +843,7 @@ color_theta = MATBLUE
 color_emp = 'dimgrey'
 textsize = 7
 
-ggplot(plotme, aes(x = value, group = name))   +
+p1 = ggplot(plotme, aes(x = value, group = name))   +
   geom_histogram(
     aes(y = ..density.., fill = name), position = 'identity', alpha = 0.5
     , breaks = c(seq(-1,16,0.5)) , color = 'white'
@@ -783,9 +854,17 @@ ggplot(plotme, aes(x = value, group = name))   +
                  ,TeX('Corrected ($|\\hat{\\theta}_i||pub_i$)'))
     , name = NULL
   ) +  
-  # shrinkage
-  geom_vline(xintercept = plotmeans$t, color = 'dimgrey', size = 1
-             , linetype = 'dashed') +
+  chen_theme  +
+  theme(legend.position = c(75,60)/100) +
+  coord_cartesian(xlim = c(-1, 15), ylim = c(0, 0.35)) +
+  scale_x_continuous(breaks = seq(-10,20,2)) +  
+  xlab(TeX('Published Absolute t-statistic ($|\\t_i|$ or $|\\theta_i|$)')) + 
+  ylab('Frequency')
+
+p2 = p1  +
+# shrinkage
+geom_vline(xintercept = plotmeans$t, color = 'dimgrey', size = 1
+           , linetype = 'dashed') +
   geom_vline(xintercept = plotmeans$theta, color = color_theta, size = 1.1
              , linetype = 'dashed') +
   annotate(geom="text"
@@ -803,16 +882,14 @@ ggplot(plotme, aes(x = value, group = name))   +
            , label="True ->",
            x=10/10, y=0.28, vjust=-1,
            family = "Palatino Linotype",  size = textsize, color = 'black'
-  ) +  
-  chen_theme  +
-  theme(legend.position = c(75,60)/100) +
-  coord_cartesian(xlim = c(-1, 15), ylim = c(0, 0.35)) +
-  scale_x_continuous(breaks = seq(-10,20,2)) +  
-  xlab(TeX('Published Absolute t-statistic ($|\\t_i|$ or $|\\theta_i|$)')) + 
-  ylab('Frequency')
+  ) 
+  
+
+ggsave('../results/monte-carlo-hlz-bar-1.pdf', p1, 
+       width = 14, height = 8, device = cairo_pdf, scale = 0.8)
 
 
-ggsave('../results/monte-carlo-hlz-bar.pdf', 
+ggsave('../results/monte-carlo-hlz-bar.pdf', p2, 
        width = 14, height = 8, device = cairo_pdf, scale = 0.8)
 
 
@@ -839,7 +916,7 @@ linesize = 1.1
 
 
 # sample for ez plotting interpretation (roughly 300 pubs)
-set.seed(430)
+set.seed(431)
 small = dat[sample(1:n,ntotal),]
 
 # holm algo
@@ -855,17 +932,31 @@ holm_05 = small %>% select(tabs) %>%
   pull(tabs)
 
 
-
-ggplot(small, aes(x=tselect,y=theta_scatter)) +
+p.scatter.1 = ggplot(small, aes(x=tselect,y=theta_scatter)) +
   geom_point(aes(group = v, color = v, shape = v), size = 2.5) +
   scale_shape_manual(values = c(16, 1)) +
   scale_color_manual(values=c(MATBLUE, MATRED)) +
-  # HURDLES
+  coord_cartesian(xlim = c(-0.1,10), ylim = c(-0.5,10)) +
+  scale_x_continuous(breaks = seq(-10,20,2)) +
+  scale_y_continuous(breaks = seq(-10,20,2)) +  
+  chen_theme +
+  theme(
+    legend.position = c(.80, .15)
+    , panel.grid.major = element_blank()
+    , panel.grid.minor = element_blank()
+  ) +
+  xlab(TeX("Absolute t-statistic $|\\t_i|$")) +
+  ylab(TeX("Standardized Expected Return $\\theta_i$"))
+
+# HURDLES
+p.scatter.2 = p.scatter.1 + 
   geom_vline(xintercept = 1.96, size = linesize) +
   annotate(geom="text", label="Classical Hurdle", 
            x=1.95, y=texty, vjust=-1, 
            family = "Palatino Linotype", angle = 90, size = textsize, color = 'black'
-  ) +
+  ) 
+
+p.scatter.3 = p.scatter.2 +
   geom_vline(xintercept = hurdle_05, size = linesize, color = 'dimgrey', linetype = 'longdash') +    
   annotate(geom="text", 
            label="FDR = 5%", 
@@ -883,30 +974,11 @@ ggplot(small, aes(x=tselect,y=theta_scatter)) +
            label=TeX("Holm 5\\%"), 
            x=holm_05, y=texty, vjust=-1, 
            family = "Palatino Linotype", angle = 90, size = textsize, color = 'darkorchid'
-  ) +  
-  # SHRINKAGE
-  # geom_abline(aes(slope = 1, intercept = 0, linetype = "Naive (45 deg)")) +
-  # geom_line(
-  #   data = datsum, aes(x=Etselect, y=Etheta, linetype = "Shrinkage")
-  # ) +
-  # scale_linetype_manual(values = c(1,2)) +
-  coord_cartesian(xlim = c(-0.1,10), ylim = c(-0.5,10)) +
-  scale_x_continuous(breaks = seq(-10,20,2)) +
-  scale_y_continuous(breaks = seq(-10,20,2)) +  
-  chen_theme +
-  theme(
-    legend.position = c(.80, .15)
-    , panel.grid.major = element_blank()
-    , panel.grid.minor = element_blank()
-  ) +
-  xlab(TeX("Absolute t-statistic $|\\t_i|$")) +
-  ylab(TeX("Standardized Expected Return $\\theta_i$"))
+  ) 
 
-ggsave('../results/hlz-scatter.pdf', 
-       width = 12,
-       height = 8,
-       device = cairo_pdf
-)
+ggsave('../results/hlz-scatter-1.pdf', p.scatter.1, width = 12, height = 8, device = cairo_pdf)
+ggsave('../results/hlz-scatter-2.pdf', p.scatter.2, width = 12, height = 8, device = cairo_pdf)
+ggsave('../results/hlz-scatter.pdf', p.scatter.3, width = 12, height = 8, device = cairo_pdf)
 
 small %>% filter(tabs > hurdle_01) %>% summarize(mean(v == 'False Predictor'))
 
@@ -914,7 +986,9 @@ small %>% filter(tabs > hurdle_01) %>% summarize(mean(v == 'False Predictor'))
 ## numbers for text --------------------------------------------------------
 
 
+hurdle_05
 
+hurdle_01
 
 dat %>% 
   filter(tselect > 1.96) %>% 
@@ -965,7 +1039,7 @@ bonf_05 = qnorm(1-0.05/2/ntotal)
 
 # settings for both panels here
 nplot = 1500
-set.seed(4)
+set.seed(11)
 
 texty = 8
 textsize = 7
@@ -977,40 +1051,10 @@ small = dat[sample(1:n,nplot),]
 
 
 
-ggplot(small, aes(x=tselect,y=theta_scatter)) +
+p1 = ggplot(small, aes(x=tselect,y=theta_scatter)) +
   geom_point(aes(group = v, color = v, shape = v), size = 2.5) +
   scale_shape_manual(values = c(16, 1)) +
   scale_color_manual(values=c(MATBLUE, MATRED)) +
-  # HURDLES
-  geom_vline(xintercept = 1.96, size = linesize) +
-  annotate(geom="text", label="Classical Hurdle", 
-           x=1.95, y=texty, vjust=-1, 
-           family = "Palatino Linotype", angle = 90, size = textsize, color = 'black'
-  ) +
-  geom_vline(xintercept = hurdle_05, size = linesize, color = 'dimgrey', linetype = 'longdash') +    
-  annotate(geom="text", 
-           label="FDR = 5%", 
-           x=24/10, y=texty, vjust=-1, 
-           family = "Palatino Linotype", angle = 90, size = textsize, color = 'dimgrey'
-  ) +  
-  geom_vline(xintercept = hurdle_01, size = linesize, color = MATRED, linetype = 'dotdash') +  
-  annotate(geom="text", 
-           label="FDR = 1%", 
-           x=3, y=texty, vjust=-1, 
-           family = "Palatino Linotype", angle = 90, size = textsize, color = MATRED
-  ) +
-  geom_vline(xintercept = bonf_05, size = linesize, color = 'darkorchid', linetype = 'dotted') +
-  annotate(geom="text", 
-           label=TeX("Bonferroni 5\\%"), 
-           x=holm_05, y=texty, vjust=-1, 
-           family = "Palatino Linotype", angle = 90, size = textsize, color = 'darkorchid'
-  ) +  
-  # SHRINKAGE
-  # geom_abline(aes(slope = 1, intercept = 0, linetype = "Naive (45 deg)")) +
-  # geom_line(
-  #   data = datsum, aes(x=Etselect, y=Etheta, linetype = "Shrinkage")
-  # ) +
-  # scale_linetype_manual(values = c(1,2)) +
   coord_cartesian(xlim = c(-0.1,10), ylim = c(-0.5,10)) +
   scale_x_continuous(breaks = seq(-10,20,2)) +
   scale_y_continuous(breaks = seq(-10,20,2)) +  
@@ -1023,13 +1067,44 @@ ggplot(small, aes(x=tselect,y=theta_scatter)) +
   xlab(TeX("Absolute t-statistic $|\\t_i|$")) +
   ylab(TeX("Corrected t-statistic $\\theta_i$"))
 
-ggsave('../results/hlz-scatter-bonf.pdf', 
-       width = 12,
-       height = 8,
-       device = cairo_pdf
-)
+# HURDLES
+p2 = p1 +
+  geom_vline(xintercept = 1.96, size = linesize) +
+  annotate(geom="text", label="Classical Hurdle", 
+           x=1.95, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = 'black'
+  ) 
+  
+p3 = p2 +  
+  geom_vline(xintercept = hurdle_05, size = linesize, color = 'dimgrey', linetype = 'longdash') +    
+  annotate(geom="text", 
+           label="FDR = 5%", 
+           x=24/10, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = 'dimgrey'
+  ) 
 
-small %>% filter(tabs > hurdle_01) %>% summarize(mean(v == 'False Predictor'))
+p4 = p3 +  
+  geom_vline(xintercept = hurdle_01, size = linesize, color = MATRED, linetype = 'dotdash') +  
+  annotate(geom="text", 
+           label="FDR = 1%", 
+           x=3, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = MATRED
+  ) 
+
+p5 = p4 +
+  geom_vline(xintercept = bonf_05, size = linesize, color = 'darkorchid', linetype = 'dotted') +
+  annotate(geom="text", 
+           label=TeX("Bonferroni 5\\%"), 
+           x=holm_05, y=texty, vjust=-1, 
+           family = "Palatino Linotype", angle = 90, size = textsize, color = 'darkorchid'
+  ) 
+  
+
+ggsave('../results/hlz-scatter-bonf-1.pdf', p1, width = 12, height = 8, device = cairo_pdf)
+ggsave('../results/hlz-scatter-bonf-2.pdf', p2, width = 12, height = 8, device = cairo_pdf)
+ggsave('../results/hlz-scatter-bonf-3.pdf', p3, width = 12, height = 8, device = cairo_pdf)
+ggsave('../results/hlz-scatter-bonf-4.pdf', p4, width = 12, height = 8, device = cairo_pdf)
+ggsave('../results/hlz-scatter-bonf.pdf', p5 , width = 12, height = 8, device = cairo_pdf)
 
 
 
@@ -1151,7 +1226,7 @@ guidedat = tibble(
   )
 
 
-ggplot(rbar_samp_time, aes(x = samp_time, y = roll_rbar)) +
+p1 = ggplot(rbar_samp_time, aes(x = samp_time, y = roll_rbar)) +
   geom_vline(xintercept = 0) +
   geom_vline(xintercept = 3, linetype = 'dashed') +  
   geom_line() +
@@ -1167,13 +1242,20 @@ ggplot(rbar_samp_time, aes(x = samp_time, y = roll_rbar)) +
   geom_hline(
     yintercept = czgrand %>% filter(samptype == 'post-pub') %>% pull(rbarbar) 
     , color = MATRED, linestyle = 'dotted'
+  ) +    
+  ylab('Trailing 3 Years \n Mean Return (bps p.m.)') +
+  xlab('Years Since Original Sample Ended') +
+  theme(
+    axis.title.y = element_text(size = 18)
+    , axis.title.x = element_text(size = 18)
   ) +
+  chen_theme 
+
+p2 = p1 + 
   geom_hline(
     yintercept = 88
     , color = MATYELLOW
   ) +
-  # geom_line(dat = guidedat, aes(x= time, y = rbar)) +
-  chen_theme +
   annotate(geom="text",
            label=TeX("Publication Bias")
            , x=-8, y=87, vjust=-1, family = "Palatino Linotype"
@@ -1185,17 +1267,11 @@ ggplot(rbar_samp_time, aes(x = samp_time, y = roll_rbar)) +
            family = "Palatino Linotype"
   ) +
   annotate('segment', x=-1, xend = -1, y = 85, yend = 54
-           , arrow = arrow(length = unit(0.3,'cm')), size = 0.5) +    
-  ylab('Trailing 3 Years \n Mean Return (bps p.m.)') +
-  xlab('Years Since Original Sample Ended') +
-  theme(
-    axis.title.y = element_text(size = 18)
-    , axis.title.x = element_text(size = 18)
-  ) 
+           , arrow = arrow(length = unit(0.3,'cm')), size = 0.5) 
 
 
-ggsave('../results/roll_rbar.pdf', height = 4, width = 8, scale = 1, device = cairo_pdf)
-
+ggsave('../results/roll_rbar-1.pdf', p1, height = 4, width = 8, scale = 1, device = cairo_pdf)
+ggsave('../results/roll_rbar.pdf', p2, height = 4, width = 8, scale = 1, device = cairo_pdf)
 
 
 ## numbers for paper -------------------------------------------------------

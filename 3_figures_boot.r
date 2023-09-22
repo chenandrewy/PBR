@@ -2,7 +2,7 @@
 tic = Sys.time()
 rm(list = ls())
 source('setup.r')
-testrun = F # T to run quickly for testing
+testrun = T # T to run quickly for testing
 
 
 # Generate McLean-Pontiff bootstrapped mean returns figure ====
@@ -26,12 +26,12 @@ bootfun = function(sampname){
   # make array that only has enough signals in each month (10)
   tgood = rowSums(!is.na(wide_is), na.rm=T) > 10
   mat = wide_is[tgood, ]
-  T = dim(mat)[1]
+  Tmax = dim(mat)[1]
   
   # bootstrap pooled mean
   rboot = rep(NA_real_, nboot)
   for (i in 1:nboot){
-    tempt = sample(1:T, replace = T)
+    tempt = sample(1:Tmax, replace = T)
     rboot[i] = mat[tempt,]  %>% as.vector %>% mean(na.rm=T)
   }
   return(rboot)
@@ -151,19 +151,36 @@ bootsum = bootdat %>%
 
 ## make table ====
 Fcz = ecdf(abs(czsum$tstat[czsum$samptype == "in-samp"]))
-Fyz = ecdf(abs(yzsum$tstat))
 Ncz = length(czsum$tstat[czsum$samptype == "in-samp"])
-Nyz = length(yzsum$tstat)
 
-tab_long = data.frame(
-  t_left
-  , Count_cz = Ncz*(1-Fcz(t_left))
-  , Count_yz = Nyz*(1-Fyz(t_left))
-  , pct_cz = (1-Fcz(t_left))*100
-  , pct_yz = (1-Fyz(t_left))*100
-  , sig_pct
-  , sig_boot = bootsum$pval*100
-)
+if (file.exists('../data/yz_sum.csv')){
+  Fyz = ecdf(abs(yzsum$tstat))
+  Nyz = length(yzsum$tstat)
+
+  tab_long = data.frame(
+    t_left
+    , Count_cz = Ncz*(1-Fcz(t_left))
+    , Count_yz = Nyz*(1-Fyz(t_left))
+    , pct_cz = (1-Fcz(t_left))*100
+    , pct_yz = (1-Fyz(t_left))*100
+    , sig_pct
+    , sig_boot = bootsum$pval*100
+  )  
+
+} else {
+  print('skipping yz')
+  tab_long = data.frame(
+    t_left
+    , Count_cz = Ncz*(1-Fcz(t_left))
+    , pct_cz = (1-Fcz(t_left))*100
+    , sig_pct
+    , sig_boot = bootsum$pval*100
+  )    
+  
+  
+}
+  
+
 
 tab_wide = tab_long %>% t()
 

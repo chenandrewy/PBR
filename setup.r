@@ -52,7 +52,12 @@ chen_theme =   theme_minimal() +
 # read from disc
 cz_all = fread("../data/PredictorPortsFull.csv")
 signaldoc = fread('../data/SignalDoc.csv')
-yzsum = fread('../data/yz_sum.csv')
+
+if (file.exists('../data/yz_sum.csv')){
+  yzsum = fread('../data/yz_sum.csv')
+} else {
+  print('heads up, yz data is not available')
+}
 
 
 signaldoc = fread('../data/SignalDoc.csv') %>% 

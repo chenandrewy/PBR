@@ -88,25 +88,28 @@ if (!file.exists('../data/PredictorAltPorts_LiqScreen_VWforce.csv')){
 # only used for one figure
 # (YZ data is not public, can't auto download)
 
-
-if (!file.exists('../data/yz_sum.csv')){
-  temp = read_sas('../data-YZ/Yan_Zheng_RFS_Data.sas7bdat')
-  
-  yzsum = temp %>%
-    mutate(
-      signalname = paste(transformation, fsvariable, sep = '.')
-    ) %>%
-    transmute(
-      signalname, date = DATE, ret = 100*ddiff_ew
-    ) %>% 
-    filter(!is.na(ret)) %>% 
-    group_by(signalname) %>% 
-    summarize(
-      rbar = mean(ret)
-      , vol = sd(ret)
-      , tstat = mean(ret)/sd(ret)*sqrt(dplyr::n())
-      , tabs = abs(tstat)
-    ) %>%
-    write.csv(.,file = "../data/yz_sum.csv")
-  
+if (file.exists('../data-YZ/Yan_Zheng_RFS_Data.sas7bdat')){
+  if (!file.exists('../data/yz_sum.csv')){
+    temp = read_sas('../data-YZ/Yan_Zheng_RFS_Data.sas7bdat')
+    
+    yzsum = temp %>%
+      mutate(
+        signalname = paste(transformation, fsvariable, sep = '.')
+      ) %>%
+      transmute(
+        signalname, date = DATE, ret = 100*ddiff_ew
+      ) %>% 
+      filter(!is.na(ret)) %>% 
+      group_by(signalname) %>% 
+      summarize(
+        rbar = mean(ret)
+        , vol = sd(ret)
+        , tstat = mean(ret)/sd(ret)*sqrt(dplyr::n())
+        , tabs = abs(tstat)
+      ) %>%
+      write.csv(.,file = "../data/yz_sum.csv")
+    
+  }
+}  else {
+  print('YZ sas data not found, just a heads up.')
 }
